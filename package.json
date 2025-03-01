@@ -1,0 +1,12 @@
+{
+  "name": "fundx",
+  "version": "1.0.0",
+  "description": "FundX is a platform for tracking and managing funds",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
