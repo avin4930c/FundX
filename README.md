@@ -1,3 +1,155 @@
+# FundX - Transparent Fund Tracking System
+
+A decentralized application for transparent fund allocation and validation using blockchain technology.
+
+## Prerequisites
+
+- Node.js (v16 or later)
+- npm or yarn
+- MetaMask browser extension
+
+## Project Setup
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd fundx
+```
+
+2. Install dependencies:
+```bash
+# Install web3 (smart contract) dependencies
+cd web3
+npm install
+
+# Install webclient dependencies
+cd ../webclient
+npm install
+```
+
+## Running the Project
+
+### 1. Start Local Blockchain
+
+```bash
+cd web3
+npx hardhat node
+```
+Keep this terminal running. Note down the private keys for testing.
+
+### 2. Deploy Smart Contract
+
+In a new terminal:
+```bash
+cd web3
+npx hardhat run scripts/deploy.js --network local
+```
+Note down the deployed contract address.
+
+### 3. Add Validators
+
+```bash
+npx hardhat run scripts/add-validators.js --network local
+```
+
+### 4. Start Web Client
+
+In a new terminal:
+```bash
+cd webclient
+npm run dev
+```
+Visit http://localhost:3000
+
+## Testing Flow
+
+1. **Setup MetaMask**
+   - Open MetaMask
+   - Add network:
+     - Network Name: Hardhat Local
+     - RPC URL: http://127.0.0.1:8545
+     - Chain ID: 31337
+     - Currency Symbol: ETH
+   - Import accounts using private keys from hardhat node output
+     - Import owner account
+     - Import validator accounts (at least 2)
+
+2. **Fund Allocation Process**
+   - Connect wallet using owner account
+   - Go to "Allocate Funds" panel
+   - Fill in project details:
+     - Project Name
+     - Description
+     - Amount in ETH
+   - Click "Allocate Funds"
+   - Confirm transaction in MetaMask
+
+3. **Validation Process**
+   - Switch to validator account in MetaMask
+   - Go to "Validator Panel"
+   - Enter Project ID (starts from 0)
+   - Click "Validate Project"
+   - Confirm transaction in MetaMask
+   - Repeat with different validator account
+   - Project is completed after required validations (default: 2)
+
+4. **View Project Status**
+   - "Pending Projects" panel shows unvalidated projects
+   - Progress bar indicates validation status
+   - Projects disappear when fully validated
+
+5. **Optional: Adjust Validator Weights**
+   - Connect with owner account
+   - Use "Validator Weights" panel
+   - Select validator
+   - Set new weight (1-100)
+   - Higher weights give validators more influence
+
+## Smart Contract Features
+
+- **Fund Allocation**: Track fund allocations with project details
+- **Multi-validator System**: Require multiple validations for project completion
+- **Weighted Validation**: Validators can have different influence levels
+- **Time-bound Validation**: Optional validation window
+- **Transparent History**: All transactions and validations are on-chain
+
+## Project Structure
+
+```
+fundx/
+├── web3/                 # Smart contract & blockchain
+│   ├── contracts/        # Solidity contracts
+│   ├── scripts/          # Deployment & test scripts
+│   └── test/            # Contract tests
+└── webclient/           # Frontend application
+    ├── src/
+    │   ├── components/  # React components
+    │   ├── config/      # Configuration files
+    │   └── contracts/   # Contract ABIs
+    └── public/          # Static assets
+```
+
+## Common Issues & Solutions
+
+1. **MetaMask Connection Issues**
+   - Ensure correct network (Hardhat Local)
+   - Reset account if nonce issues occur
+
+2. **Transaction Failures**
+   - Check account has enough ETH
+   - Ensure correct account role (owner/validator)
+
+3. **Contract Interaction Issues**
+   - Verify contract address in config
+   - Check ABI matches deployed contract
+
+## Development Notes
+
+- Contract address needs to be updated in `webclient/src/config/wagmi.ts`
+- Default validation requirement is 2 validators
+- Owner can adjust validation parameters
+- All amounts are in Wei (1 ETH = 10^18 Wei)
+
 # Fund Allocation Tracking System
 
 ## 🚀 Getting Started for Local Development

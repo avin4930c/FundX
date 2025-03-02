@@ -6,8 +6,16 @@
 }
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #111827; /* dark gray */
+  --card-background: #1f2937; /* slightly lighter gray */
+  --foreground: #f3f4f6;
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --accent: #8b5cf6;
+  --accent-dark: #7c3aed;
+  --success: #059669;
+  --error: #dc2626;
+  --border: #374151;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -21,4 +29,41 @@ body {
   color: var(--foreground);
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Custom styles */
+.gradient-border {
+  background: linear-gradient(var(--card-background), var(--card-background)) padding-box,
+              linear-gradient(to right, var(--primary), var(--accent)) border-box;
+  border: 2px solid transparent;
+}
+
+/* Form styles */
+input, textarea {
+  @apply transition-all duration-200 bg-gray-800 border-gray-700 text-gray-100;
+}
+
+input:focus, textarea:focus {
+  @apply outline-none ring-2 ring-blue-500 border-transparent;
+}
+
+input::placeholder, textarea::placeholder {
+  @apply text-gray-500;
+}
+
+/* Card styles */
+.card {
+  @apply bg-gray-800 rounded-xl shadow-lg overflow-hidden border border-gray-700;
+}
+
+.card-header {
+  @apply bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-4;
+}
+
+.hover-card {
+  @apply transition-all duration-300;
+}
+
+.hover-card:hover {
+  @apply transform -translate-y-1 shadow-xl;
 }

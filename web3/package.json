@@ -7,10 +7,16 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy.js --network sepolia",
+    "verify": "hardhat verify --network sepolia",
+    "copy-abi": "copy artifacts\\contracts\\Fundtracking.sol\\FundAllocation.json ..\\webclient\\src\\constants\\FundAllocation.json",
+    "build": "npm run compile && npm run copy-abi",
+    "postdeploy": "npm run build"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "cpy-cli": "^4.2.0",
     "dotenv": "^16.4.7",
     "ethers": "^6.13.5",
     "hardhat": "^2.22.19"
