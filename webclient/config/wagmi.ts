@@ -3,7 +3,7 @@ import { sepolia, hardhat } from 'wagmi/chains';
 import { fallback, http as viemHttp } from 'viem';
 
 // Contract ABI and addresses
-export const FUND_ALLOCATION_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || '';
+export const FUND_ALLOCATION_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || '0xYOUR_NEW_CONTRACT_ADDRESS';
 
 export const wagmiConfig = getDefaultConfig({
   appName: 'FundX - Transparent Fund Tracking',

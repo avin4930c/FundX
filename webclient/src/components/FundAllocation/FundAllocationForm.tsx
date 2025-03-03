@@ -33,6 +33,13 @@ export function FundAllocationForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      console.log('Attempting to allocate funds:', {
+        projectName: formData.projectName,
+        description: formData.description,
+        recipient: formData.recipientAddress,
+        amount: formData.amount
+      });
+
       await writeContract({
         address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
         abi: fundAllocationABI,
@@ -40,12 +47,13 @@ export function FundAllocationForm() {
         args: [
           formData.projectName,
           formData.description,
-          formData.recipientAddress as `0x${string}`,
-          BigInt(formData.milestones)
+          formData.recipientAddress as `0x${string}`
         ],
         value: parseEther(formData.amount)
       });
-      
+
+      console.log('Transaction submitted successfully');
+
       // Clear form
       setFormData({
         projectName: '',
@@ -54,8 +62,14 @@ export function FundAllocationForm() {
         description: '',
         milestones: 1
       });
-      
+
+      // Wait for transaction confirmation
+      if (hash) {
+        console.log('Transaction hash:', hash);
+      }
+
       // Trigger a refresh of pending projects
+      console.log('Dispatching projectAdded event');
       window.dispatchEvent(new Event('projectAdded'));
     } catch (error) {
       console.error('Error allocating funds:', error);
@@ -73,7 +87,7 @@ export function FundAllocationForm() {
           <input
             type="text"
             value={formData.projectName}
-            onChange={(e) => setFormData({...formData, projectName: e.target.value})}
+            onChange={(e) => setFormData({ ...formData, projectName: e.target.value })}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
             required
           />
@@ -86,7 +100,7 @@ export function FundAllocationForm() {
           <input
             type="text"
             value={formData.recipientAddress}
-            onChange={(e) => setFormData({...formData, recipientAddress: e.target.value})}
+            onChange={(e) => setFormData({ ...formData, recipientAddress: e.target.value })}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
             required
           />
@@ -100,7 +114,7 @@ export function FundAllocationForm() {
             type="number"
             step="0.01"
             value={formData.amount}
-            onChange={(e) => setFormData({...formData, amount: e.target.value})}
+            onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
             required
           />
@@ -112,7 +126,7 @@ export function FundAllocationForm() {
           </label>
           <textarea
             value={formData.description}
-            onChange={(e) => setFormData({...formData, description: e.target.value})}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
             rows={4}
             required
@@ -128,7 +142,7 @@ export function FundAllocationForm() {
             min="1"
             max="10"
             value={formData.milestones}
-            onChange={(e) => setFormData({...formData, milestones: parseInt(e.target.value)})}
+            onChange={(e) => setFormData({ ...formData, milestones: parseInt(e.target.value) })}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
             required
           />

@@ -8,7 +8,7 @@
   "main": "index.js",
   "scripts": {
     "compile": "hardhat compile",
-    "deploy": "hardhat run scripts/deploy.js --network sepolia",
+    "deploy": "hardhat run scripts/deploy.js --network local",
     "verify": "hardhat verify --network sepolia",
     "copy-abi": "copy artifacts\\contracts\\Fundtracking.sol\\FundAllocation.json ..\\webclient\\src\\constants\\FundAllocation.json",
     "build": "npm run compile && npm run copy-abi",
