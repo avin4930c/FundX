@@ -11,10 +11,10 @@ export const wagmiConfig = getDefaultConfig({
   chains: [sepolia, hardhat],
   transports: {
     [sepolia.id]: fallback([
-      viemHttp(process.env.NEXT_PUBLIC_ALCHEMY_RPC),
+      viemHttp(process.env.NEXT_PUBLIC_ALCHEMY_RPC || ''),
       viemHttp()
     ]),
     [hardhat.id]: viemHttp('http://127.0.0.1:8545')
   },
-  ssr: true,
+  ssr: true
 });

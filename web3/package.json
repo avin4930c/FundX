@@ -8,10 +8,19 @@
   "main": "index.js",
   "scripts": {
     "compile": "hardhat compile",
-    "deploy": "hardhat run scripts/deploy.js --network sepolia",
+    "deploy": "hardhat run scripts/deploy.js --network localhost",
+    "deploy:enhanced": "hardhat run scripts/deploy-enhanced.js --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "deploy:enhanced:sepolia": "hardhat run scripts/deploy-enhanced.js --network sepolia",
     "verify": "hardhat verify --network sepolia",
-    "copy-abi": "copy artifacts\\contracts\\Fundtracking.sol\\FundAllocation.json ..\\webclient\\src\\constants\\FundAllocation.json",
+    "node": "hardhat node",
+    "test:local": "hardhat run scripts/test-local.js --network localhost",
+    "test:enhanced": "hardhat run scripts/test-enhanced.js --network localhost",
+    "run:local": "node scripts/run-local.js",
+    "copy-abi": "cp artifacts/contracts/Fundtracking.sol/FundAllocation.json ../webclient/src/constants/FundAllocation.json",
+    "copy-abi:enhanced": "cp artifacts/contracts/EnhancedFunding.sol/EnhancedFunding.json ../webclient/src/constants/EnhancedFunding.json",
     "build": "npm run compile && npm run copy-abi",
+    "build:enhanced": "npm run compile && npm run copy-abi:enhanced",
     "postdeploy": "npm run build"
   },
   "devDependencies": {
