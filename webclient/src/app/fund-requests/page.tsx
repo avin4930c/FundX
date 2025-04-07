@@ -1,27 +1,147 @@
 "use client";
 
-import { useState } from "react";
-import { useAccount } from "wagmi";
+import { useState, useEffect } from "react";
+import {
+    useAccount,
+    useReadContract,
+    useContractReads,
+    usePublicClient,
+} from "wagmi";
+import { formatEther } from "viem";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import Link from "next/link";
-import WithdrawalRequestForm from "@/components/FundRequest/WithdrawalRequestForm";
+import { useRouter } from "next/navigation";
 import PendingRequestsList from "@/components/FundRequest/PendingRequestsList";
 import Header from "@/components/Layout/Header";
+import { FUND_ALLOCATION_ADDRESS } from "../../../config/wagmi";
+import { FundAllocationABI } from "@/abi/FundAllocationABI";
+import WithdrawalRequestForm from "@/components/FundRequest/WithdrawalRequestForm";
+
+interface Fundraiser {
+    id: number;
+    name: string;
+    description: string;
+    creator: string;
+    targetAmount: bigint;
+    currentAmount: bigint;
+    deadline: bigint;
+    active: boolean;
+}
 
 export default function FundRequestsPage() {
-    const { isConnected } = useAccount();
+    const { isConnected, address } = useAccount();
     const [selectedTab, setSelectedTab] = useState<
         "myRequests" | "pendingApprovals"
     >("myRequests");
     const [selectedFundraiserId, setSelectedFundraiserId] = useState<number>(0);
     const [isRequestSuccessful, setIsRequestSuccessful] = useState(false);
+    const [myFundraisers, setMyFundraisers] = useState<Fundraiser[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const router = useRouter();
 
-    // In a real app, these would be loaded from the contract
-    const myFundraisers = [
-        { id: 0, name: "Community Garden Project" },
-        { id: 1, name: "Tech Education for Kids" },
-        { id: 2, name: "Clean Water Initiative" },
-    ];
+    // Get fundraiser count
+    const { data: fundraiserCount, isSuccess: isFundraiserCountSuccess } =
+        useReadContract({
+            address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
+            abi: FundAllocationABI,
+            functionName: "getFundraiserCount",
+        });
+
+    // Use useContractReads to fetch all fundraisers in one batch
+    const { data: fundraisersData } = useContractReads({
+        contracts: fundraiserCount
+            ? Array.from({ length: Number(fundraiserCount) }).map((_, i) => ({
+                  address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
+                  abi: FundAllocationABI as any, // Type assertion to resolve type issue
+                  functionName: "fundraisers",
+                  args: [BigInt(i)],
+              }))
+            : [],
+    });
+
+    // Fetch all fundraisers created by the current user
+    useEffect(() => {
+        const fetchUserFundraisers = async () => {
+            if (
+                !isConnected ||
+                !address ||
+                !fundraiserCount ||
+                !fundraisersData
+            ) {
+                setIsLoading(false);
+                return;
+            }
+
+            try {
+                setIsLoading(true);
+                console.log("Fetching fundraisers for address:", address);
+
+                const userFundraisers: Fundraiser[] = [];
+
+                // Process the data from useContractReads
+                fundraisersData.forEach((result, index) => {
+                    if (result.status === "success" && result.result) {
+                        const data = result.result as any[];
+                        const creatorAddress = data[2] as string;
+
+                        if (
+                            creatorAddress.toLowerCase() ===
+                            address.toLowerCase()
+                        ) {
+                            console.log(
+                                `Fundraiser ${index} belongs to current user`
+                            );
+
+                            const fundraiser: Fundraiser = {
+                                id: index,
+                                name: data[0] || `Fundraiser #${index}`,
+                                description:
+                                    data[1] || "No description available",
+                                creator: creatorAddress,
+                                targetAmount: BigInt(
+                                    data[3]?.toString() || "0"
+                                ),
+                                currentAmount: BigInt(
+                                    data[4]?.toString() || "0"
+                                ),
+                                deadline: BigInt(data[5]?.toString() || "0"),
+                                active: !!data[6],
+                            };
+
+                            userFundraisers.push(fundraiser);
+                        }
+                    }
+                });
+
+                if (userFundraisers.length > 0) {
+                    setSelectedFundraiserId(userFundraisers[0].id);
+                }
+
+                setMyFundraisers(userFundraisers);
+                setIsLoading(false);
+            } catch (error) {
+                console.error("Error processing fundraisers:", error);
+                setIsLoading(false);
+            }
+        };
+
+        if (
+            isConnected &&
+            address &&
+            isFundraiserCountSuccess &&
+            fundraisersData
+        ) {
+            fetchUserFundraisers();
+        } else {
+            setIsLoading(false);
+        }
+    }, [
+        isConnected,
+        address,
+        fundraiserCount,
+        isFundraiserCountSuccess,
+        fundraisersData,
+    ]);
 
     // Handle successful request submission
     const handleRequestSuccess = () => {
@@ -29,6 +149,48 @@ export default function FundRequestsPage() {
         setTimeout(() => {
             setIsRequestSuccessful(false);
         }, 5000);
+    };
+
+    // Update selectedFundraiserId when a different fundraiser is chosen
+    const handleFundraiserChange = (
+        e: React.ChangeEvent<HTMLSelectElement>
+    ) => {
+        const id = parseInt(e.target.value);
+        console.log(`Selected fundraiser changed to ID: ${id}`);
+        setSelectedFundraiserId(id);
+    };
+
+    // Add debugging info for all available fundraisers
+    useEffect(() => {
+        if (fundraisersData && fundraisersData.length > 0) {
+            console.log(
+                `Total fundraisers data available: ${fundraisersData.length}`
+            );
+
+            // Log the first few fundraisers for debugging
+            fundraisersData.slice(0, 5).forEach((result, index) => {
+                if (result.status === "success" && result.result) {
+                    const data = result.result as any[];
+                    console.log(`Fundraiser #${index} details:`, {
+                        name: data[0],
+                        description: data[1],
+                        creator: data[2],
+                        targetAmount: data[3]?.toString(),
+                        currentAmount: data[4]?.toString(),
+                        deadline: data[5]?.toString(),
+                        active: !!data[6],
+                    });
+                } else {
+                    console.log(
+                        `Fundraiser #${index} failed to load or is empty`
+                    );
+                }
+            });
+        }
+    }, [fundraisersData]);
+
+    const navigateToGovernance = () => {
+        router.push("/governance");
     };
 
     return (
@@ -107,7 +269,8 @@ export default function FundRequestsPage() {
                                         <p className="text-sm font-medium text-green-800 dark:text-green-200">
                                             Your withdrawal request has been
                                             submitted successfully and is now
-                                            awaiting approval from DAO members.
+                                            awaiting approval from authorized
+                                            signers.
                                         </p>
                                     </div>
                                 </div>
@@ -128,34 +291,74 @@ export default function FundRequestsPage() {
                                 </div>
 
                                 <div className="px-4 py-5 sm:p-6">
-                                    {/* Fundraiser selection */}
-                                    <div className="mb-6">
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                            Select Fundraiser
-                                        </label>
-                                        <select
-                                            value={selectedFundraiserId}
-                                            onChange={(e) =>
-                                                setSelectedFundraiserId(
-                                                    Number(e.target.value)
-                                                )
-                                            }
-                                            className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
-                                            {myFundraisers.map((fundraiser) => (
-                                                <option
-                                                    key={fundraiser.id}
-                                                    value={fundraiser.id}>
-                                                    {fundraiser.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
+                                    {isLoading ? (
+                                        <div className="text-center py-4">
+                                            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+                                            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                                Loading your fundraisers...
+                                            </p>
+                                        </div>
+                                    ) : myFundraisers.length === 0 ? (
+                                        <div className="text-center py-4">
+                                            <p className="text-gray-500 dark:text-gray-400">
+                                                You don't have any fundraisers
+                                                yet.
+                                                <Link
+                                                    href="/create"
+                                                    className="text-blue-500 hover:underline ml-1">
+                                                    Create one
+                                                </Link>
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {/* Fundraiser selection - Improved styling */}
+                                            <div className="mb-6">
+                                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                    Select Fundraiser
+                                                </label>
+                                                <div className="relative">
+                                                    <select
+                                                        value={
+                                                            selectedFundraiserId
+                                                        }
+                                                        onChange={
+                                                            handleFundraiserChange
+                                                        }
+                                                        className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md dark:bg-gray-800 dark:border-gray-600 dark:text-white">
+                                                        {myFundraisers.map(
+                                                            (fundraiser) => (
+                                                                <option
+                                                                    key={
+                                                                        fundraiser.id
+                                                                    }
+                                                                    value={
+                                                                        fundraiser.id
+                                                                    }>
+                                                                    {
+                                                                        fundraiser.name
+                                                                    }
+                                                                </option>
+                                                            )
+                                                        )}
+                                                    </select>
+                                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300"></div>
+                                                </div>
+                                            </div>
 
-                                    {/* Request Form */}
-                                    <WithdrawalRequestForm
-                                        fundraiserId={selectedFundraiserId}
-                                        onSuccess={handleRequestSuccess}
-                                    />
+                                            {/* Request Form */}
+                                            <div className="mt-6">
+                                                <WithdrawalRequestForm
+                                                    fundraiserId={
+                                                        selectedFundraiserId
+                                                    }
+                                                    onSuccess={
+                                                        handleRequestSuccess
+                                                    }
+                                                />
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         ) : (
@@ -177,67 +380,72 @@ export default function FundRequestsPage() {
                         )}
 
                         {/* Information section */}
-                        <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-                            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                                About Fund Requests
-                            </h3>
-                            <div className="space-y-4">
-                                <div className="flex">
-                                    <div className="flex-shrink-0">
-                                        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300">
-                                            1
+                        <div className="bg-white dark:bg-gray-800 shadow overflow-hidden rounded-lg">
+                            <div className="px-4 py-5 sm:px-6">
+                                <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">
+                                    How Withdrawal Requests Work
+                                </h3>
+                                <p className="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
+                                    Our platform ensures secure and transparent
+                                    fund management through a structured
+                                    withdrawal process:
+                                </p>
+                            </div>
+                            <div className="border-t border-gray-200 dark:border-gray-700 px-4 py-5 sm:px-6">
+                                <div className="space-y-6">
+                                    <div className="flex">
+                                        <div className="flex-shrink-0">
+                                            <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300">
+                                                1
+                                            </div>
+                                        </div>
+                                        <div className="ml-4">
+                                            <h4 className="text-md font-medium text-gray-900 dark:text-white">
+                                                Request Submission
+                                            </h4>
+                                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                                                Fundraiser owners submit
+                                                withdrawal requests specifying
+                                                the amount and reason for the
+                                                withdrawal.
+                                            </p>
                                         </div>
                                     </div>
-                                    <div className="ml-4">
-                                        <h4 className="text-md font-medium text-gray-900 dark:text-white">
-                                            Submit a Request
-                                        </h4>
-                                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                                            Fundraisers can request to withdraw
-                                            funds from their campaigns by
-                                            specifying the amount and reason.
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex">
-                                    <div className="flex-shrink-0">
-                                        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300">
-                                            2
+                                    <div className="flex">
+                                        <div className="flex-shrink-0">
+                                            <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300">
+                                                2
+                                            </div>
+                                        </div>
+                                        <div className="ml-4">
+                                            <h4 className="text-md font-medium text-gray-900 dark:text-white">
+                                                Multi-Signature Review
+                                            </h4>
+                                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                                                Each withdrawal request requires
+                                                approval from multiple
+                                                authorized signers, ensuring
+                                                transparency and accountability.
+                                            </p>
                                         </div>
                                     </div>
-                                    <div className="ml-4">
-                                        <h4 className="text-md font-medium text-gray-900 dark:text-white">
-                                            DAO Voting
-                                        </h4>
-                                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                                            DAO members vote to approve or
-                                            reject each request, ensuring
-                                            transparency and accountability.
-                                            <span className="block mt-1">
-                                                <Link
-                                                    href="/governance"
-                                                    className="text-blue-600 dark:text-blue-400 hover:underline">
-                                                    Go to Governance Portal →
-                                                </Link>
-                                            </span>
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex">
-                                    <div className="flex-shrink-0">
-                                        <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300">
-                                            3
+                                    <div className="flex">
+                                        <div className="flex-shrink-0">
+                                            <div className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300">
+                                                3
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="ml-4">
-                                        <h4 className="text-md font-medium text-gray-900 dark:text-white">
-                                            Multi-Signature Approval
-                                        </h4>
-                                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                                            Approved requests require additional
-                                            signatures from designated approvers
-                                            before funds are released.
-                                        </p>
+                                        <div className="ml-4">
+                                            <h4 className="text-md font-medium text-gray-900 dark:text-white">
+                                                Fund Release
+                                            </h4>
+                                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                                                Once approved by the required
+                                                number of signers, funds are
+                                                automatically released to the
+                                                fundraiser creator.
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-
-interface SignatureOwner {
-    address: string;
-    name: string;
-    isActive: boolean;
-}
+import { useReadContract } from "wagmi";
+import { FundAllocationABI } from "../../abi/FundAllocationABI";
+import { formatEthereumAddress } from "@/lib/addressUtils";
+import { MULTISIG_CONTRACT_ADDRESS } from "@/constants/addresses";
 
 interface SignatureOwnersListProps {
     currentAddress: string;
@@ -15,108 +13,114 @@ interface SignatureOwnersListProps {
 export default function SignatureOwnersList({
     currentAddress,
 }: SignatureOwnersListProps) {
-    const [owners, setOwners] = useState<SignatureOwner[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [owners, setOwners] = useState<string[]>([]);
+    const [requiredApprovals, setRequiredApprovals] = useState<number>(0);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    // Mock function to fetch owners - would be replaced with actual contract calls
+    const { data: ownersData } = useReadContract({
+        address: MULTISIG_CONTRACT_ADDRESS as `0x${string}`,
+        abi: FundAllocationABI,
+        functionName: "getOwners",
+    });
+
+    const { data: requiredApprovalsData } = useReadContract({
+        address: MULTISIG_CONTRACT_ADDRESS as `0x${string}`,
+        abi: FundAllocationABI,
+        functionName: "required",
+    });
+
     useEffect(() => {
-        const fetchOwners = async () => {
-            setLoading(true);
+        if (ownersData) {
+            setOwners(ownersData as string[]);
+            setIsLoading(false);
+        }
+    }, [ownersData]);
 
-            // Simulate API delay
-            await new Promise((resolve) => setTimeout(resolve, 800));
+    useEffect(() => {
+        if (requiredApprovalsData) {
+            setRequiredApprovals(Number(requiredApprovalsData));
+        }
+    }, [requiredApprovalsData]);
 
-            // Mock data - in a real app, this would be fetched from the contract
-            const mockOwners: SignatureOwner[] = [
-                {
-                    address: "0x5678...9012",
-                    name: "Manager A",
-                    isActive: true,
-                },
-                {
-                    address: "0x3456...7890",
-                    name: "Manager B",
-                    isActive: true,
-                },
-                {
-                    address: "0x7890...1234",
-                    name: "Manager C",
-                    isActive: true,
-                },
-            ];
+    // Fallback to mock data if fetch fails
+    useEffect(() => {
+        if (!ownersData && !isLoading) {
+            setOwners([
+                "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+                "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+            ]);
+            setRequiredApprovals(2);
+        }
+    }, [ownersData, isLoading]);
 
-            setOwners(mockOwners);
-            setLoading(false);
-        };
+    if (error) {
+        return (
+            <div className="p-4 text-red-500">
+                Error loading signers: {error}
+            </div>
+        );
+    }
 
-        fetchOwners();
-    }, []);
-
-    // Check if the current address is an owner
-    const isCurrentAddressOwner = () => {
-        if (!currentAddress) return false;
-        const shortAddress =
-            currentAddress.slice(0, 6) + "..." + currentAddress.slice(-4);
-        return owners.some((owner) => owner.address === shortAddress);
-    };
+    if (isLoading) {
+        return (
+            <div className="animate-pulse p-4">
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-3"></div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3 mb-3"></div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-2"></div>
+            </div>
+        );
+    }
 
     return (
-        <div className="bg-white dark:bg-gray-800">
-            {loading ? (
-                <div className="flex justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+        <div className="bg-white dark:bg-gray-800 overflow-hidden">
+            <div className="px-4 py-5 sm:p-6">
+                <div className="mb-4">
+                    <span className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 py-1 px-2 rounded-md text-sm font-medium">
+                        {requiredApprovals} out of {owners.length} signatures
+                        required
+                    </span>
                 </div>
-            ) : (
+
                 <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {owners.map((owner, index) => (
-                        <li
-                            key={index}
-                            className="px-4 py-4 sm:px-6">
-                            <div className="flex items-center justify-between">
+                    {owners.map((owner, index) => {
+                        const isCurrentUser =
+                            owner.toLowerCase() ===
+                            currentAddress.toLowerCase();
+
+                        return (
+                            <li
+                                key={index}
+                                className="py-4 flex items-center justify-between">
                                 <div className="flex items-center">
                                     <div
-                                        className={`w-2 h-2 rounded-full ${
-                                            owner.isActive
+                                        className={`w-2 h-2 rounded-full mr-3 ${
+                                            isCurrentUser
                                                 ? "bg-green-500"
                                                 : "bg-gray-300 dark:bg-gray-600"
-                                        } mr-3`}></div>
+                                        }`}></div>
                                     <div>
                                         <p className="text-sm font-medium text-gray-900 dark:text-white">
-                                            {owner.name}
+                                            {formatEthereumAddress(owner)}
                                         </p>
-                                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                                            {owner.address}
-                                        </p>
+                                        {isCurrentUser && (
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                (You)
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
-                                {owner.address ===
-                                    currentAddress?.slice(0, 6) +
-                                        "..." +
-                                        currentAddress?.slice(-4) && (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                                        You
-                                    </span>
-                                )}
-                            </div>
-                        </li>
-                    ))}
-                    <li className="px-4 py-4 sm:px-6">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center">
-                                <div className="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 mr-3"></div>
                                 <div>
-                                    <p className="text-sm font-medium text-gray-900 dark:text-white">
-                                        Required signatures
-                                    </p>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                                        2 of 3 signatures required
-                                    </p>
+                                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                        Active
+                                    </span>
                                 </div>
-                            </div>
-                        </div>
-                    </li>
+                            </li>
+                        );
+                    })}
                 </ul>
-            )}
+            </div>
         </div>
     );
 }

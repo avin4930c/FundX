@@ -45,7 +45,6 @@ export default function Header({ pageTitle, showBackButton }: HeaderProps) {
         { name: "Explore", href: "/explore" },
         { name: "Create", href: "/create" },
         { name: "Fund Requests", href: "/fund-requests" },
-        { name: "Governance", href: "/governance" },
         { name: "Multi-Sig", href: "/multi-sig" },
     ];
 

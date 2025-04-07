@@ -18,7 +18,6 @@
     "test:enhanced": "hardhat run scripts/test-enhanced.js --network localhost",
     "run:local": "node scripts/run-local.js",
     "copy-abi": "cp artifacts/contracts/Fundtracking.sol/FundAllocation.json ../webclient/src/constants/FundAllocation.json",
-    "copy-abi:enhanced": "cp artifacts/contracts/EnhancedFunding.sol/EnhancedFunding.json ../webclient/src/constants/EnhancedFunding.json",
     "build": "npm run compile && npm run copy-abi",
     "build:enhanced": "npm run compile && npm run copy-abi:enhanced",
     "postdeploy": "npm run build"

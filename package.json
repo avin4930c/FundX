@@ -1,12 +1,16 @@
 {
-  "name": "fundx",
-  "version": "1.0.0",
+  "name": "fundx-webclient",
+  "version": "0.1.0",
+  "private": true,
   "description": "FundX is a platform for tracking and managing funds",
   "license": "ISC",
   "author": "",
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   }
 }

@@ -1,9 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAccount, useContractRead, useContractWrite } from "wagmi";
+import {
+    useAccount,
+    useReadContract,
+    useWriteContract,
+    useWaitForTransactionReceipt,
+    useReadContracts,
+} from "wagmi";
 import { parseEther, formatEther } from "viem";
 import Link from "next/link";
+import { FUND_ALLOCATION_ADDRESS } from "../../../config/wagmi";
+import { FundAllocationABI } from "@/abi/FundAllocationABI";
 
 // Define the Proposal type
 interface Proposal {
@@ -21,10 +29,10 @@ interface Proposal {
 
 // Props for the component
 interface ProposalsListProps {
-    type: "active" | "past";
+    status: "active" | "past";
 }
 
-export default function ProposalsList({ type }: ProposalsListProps) {
+export default function ProposalsList({ status }: ProposalsListProps) {
     // State for proposals
     const [proposals, setProposals] = useState<Proposal[]>([]);
     const [loading, setLoading] = useState(true);
@@ -39,81 +47,225 @@ export default function ProposalsList({ type }: ProposalsListProps) {
         };
     }>({});
 
-    // Mock function to fetch proposals - would be replaced with actual contract calls
+    // Get proposal count
+    const { data: proposalCount } = useReadContract({
+        address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
+        abi: FundAllocationABI,
+        functionName: "proposalCount",
+    });
+
+    // Contract write function for voting
+    const { writeContract, data: txHash } = useWriteContract();
+
+    // Wait for transaction receipt
+    const { isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+        hash: txHash,
+    });
+
+    // Add this hook near the top of your component
+    const { data: fundraisersData } = useReadContracts({
+        contracts: proposalCount
+            ? Array.from({ length: Number(proposalCount) }).map((_, i) => ({
+                  address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
+                  abi: FundAllocationABI as any,
+                  functionName: "fundraisers",
+                  args: [BigInt(i)],
+              }))
+            : [],
+    });
+
+    // Effect to handle successful transaction confirmation
     useEffect(() => {
-        const fetchProposals = async () => {
-            setLoading(true);
+        if (isConfirmed && txHash) {
+            // Refresh data after successful transaction
+            fetchProposals();
+        }
+    }, [isConfirmed, txHash]);
 
-            // Mock data - in a real app, you'd fetch from the contract
-            const mockProposals: Proposal[] = [
-                {
-                    id: 1,
-                    title: "Community Garden Milestone 1",
-                    description:
-                        "Funding for initial land preparation and seed purchase",
-                    amount: "0.5",
-                    creator: "0x1234...5678",
-                    status: "active",
-                    votesFor: 8,
-                    votesAgainst: 2,
-                    deadline: new Date(Date.now() + 86400000 * 2), // 2 days from now
-                    fundraiserId: 1,
-                },
-                {
-                    id: 2,
-                    title: "Clean Water Initiative Phase 1",
-                    description:
-                        "Equipment purchase for water purification system",
-                    amount: "1.2",
-                    creator: "0x5678...9012",
-                    status: "active",
-                    votesFor: 12,
-                    votesAgainst: 3,
-                    deadline: new Date(Date.now() + 86400000 * 3), // 3 days from now
-                    fundraiserId: 2,
-                },
-                {
-                    id: 3,
-                    title: "Education Outreach Program",
-                    description:
-                        "Materials and transportation for rural area education",
-                    amount: "0.8",
-                    creator: "0x9012...3456",
-                    status: "approved",
-                    votesFor: 15,
-                    votesAgainst: 5,
-                    deadline: new Date(Date.now() - 86400000 * 1), // 1 day ago
-                    fundraiserId: 3,
-                },
-                {
-                    id: 4,
-                    title: "Wildlife Conservation Project",
-                    description: "Equipment for tracking endangered species",
-                    amount: "1.5",
-                    creator: "0x3456...7890",
-                    status: "rejected",
-                    votesFor: 5,
-                    votesAgainst: 15,
-                    deadline: new Date(Date.now() - 86400000 * 2), // 2 days ago
-                    fundraiserId: 4,
-                },
-            ];
+    // Fetch proposals from the contract
+    const fetchProposals = async () => {
+        setLoading(true);
 
-            // Filter based on type
-            const filteredProposals = mockProposals.filter((p) =>
-                type === "active"
-                    ? p.status === "active"
-                    : p.status === "approved" || p.status === "rejected"
-            );
+        try {
+            // Get total withdrawal requests count
+            const withdrawalRequestsCount = await window.ethereum.request({
+                method: "eth_call",
+                params: [
+                    {
+                        to: FUND_ALLOCATION_ADDRESS,
+                        data: "0x9d866985", // Function selector for "withdrawalRequests().length"
+                    },
+                    "latest",
+                ],
+            });
 
-            setProposals(filteredProposals);
-            setLoading(false);
+            const count = parseInt(withdrawalRequestsCount || "0", 16);
+            console.log(`Total withdrawal requests: ${count}`);
+
+            if (count === 0 || !count) {
+                setProposals([]);
+                setLoading(false);
+                return;
+            }
+
+            // Fetch each withdrawal request
+            const requests = [];
+            for (let i = 0; i < Math.min(count, 10); i++) {
+                // Limit to 10 most recent for performance
+                try {
+                    // Call contract to get withdrawal request data
+                    const result = await window.ethereum.request({
+                        method: "eth_call",
+                        params: [
+                            {
+                                to: FUND_ALLOCATION_ADDRESS,
+                                // Function selector for withdrawalRequests(uint256)
+                                data: `0x5e446194${i
+                                    .toString(16)
+                                    .padStart(64, "0")}`,
+                            },
+                            "latest",
+                        ],
+                    });
+
+                    if (result) {
+                        // Decode the request data
+                        // Format: projectId, milestoneId, amount, approvedBy, executed, timestamp
+                        const projectId = parseInt(result.slice(2, 66), 16);
+                        const amount = BigInt(`0x${result.slice(66, 130)}`);
+                        const executed =
+                            result.slice(194, 258) !== "0".repeat(64);
+                        const timestamp = parseInt(result.slice(258, 322), 16);
+
+                        // Get fundraiser details
+                        const fundraiserData = await window.ethereum.request({
+                            method: "eth_call",
+                            params: [
+                                {
+                                    to: FUND_ALLOCATION_ADDRESS,
+                                    data: `0x8b5b9ceb${projectId
+                                        .toString(16)
+                                        .padStart(64, "0")}`,
+                                },
+                                "latest",
+                            ],
+                        });
+
+                        // Get project name and description
+                        const name = "Withdrawal Request #" + i;
+                        const description = `Withdrawal request for Project #${projectId}`;
+                        const proposalStatus = executed ? "approved" : "active";
+                        const deadline = new Date(timestamp * 1000);
+
+                        // Create a proper proposal object
+                        const proposal: Proposal = {
+                            id: i,
+                            title: name,
+                            description: description,
+                            amount: formatEther(amount),
+                            creator:
+                                "0x" + result.slice(130, 194).substring(24), // Extract creator address
+                            status: proposalStatus,
+                            votesFor: 0, // These would come from actual votes
+                            votesAgainst: 0,
+                            deadline: deadline,
+                            fundraiserId: projectId,
+                        };
+
+                        // Filter based on tab and proposal status separately
+                        const isActiveTab = proposalStatus === "active";
+                        const isPastTab = proposalStatus === "approved";
+
+                        if (
+                            (isActiveTab && proposal.status === "active") ||
+                            (isPastTab && proposal.status === "approved")
+                        ) {
+                            requests.push(proposal);
+                        }
+                    }
+                } catch (error) {
+                    console.error(
+                        `Error fetching withdrawal request ${i}:`,
+                        error
+                    );
+                }
+            }
+
+            setProposals(requests);
+        } catch (error) {
+            console.error("Error fetching proposals:", error);
+            setProposals([]);
+        }
+
+        setLoading(false);
+    };
+
+    // Then update your useEffect
+    useEffect(() => {
+        const fetchUserFundraisers = async () => {
+            if (!address || !proposalCount || !fundraisersData) {
+                setLoading(false);
+                return;
+            }
+
+            try {
+                setLoading(true);
+                console.log("Fetching fundraisers for address:", address);
+
+                const userFundraisers: Proposal[] = [];
+
+                // Process the data from useContractReads
+                fundraisersData.forEach((result, index) => {
+                    if (result.status === "success" && result.result) {
+                        const data = result.result as any[];
+                        const creatorAddress = data[2] as string;
+
+                        if (
+                            creatorAddress.toLowerCase() ===
+                            address.toLowerCase()
+                        ) {
+                            console.log(
+                                `Fundraiser ${index} belongs to current user`
+                            );
+
+                            const proposal: Proposal = {
+                                id: index,
+                                title: data[0] || `Proposal #${index}`,
+                                description:
+                                    data[1] || "No description available",
+                                amount: data[3]?.toString() || "0",
+                                creator: creatorAddress,
+                                status: data[6] ? "active" : "approved",
+                                votesFor: 0,
+                                votesAgainst: 0,
+                                deadline: new Date(
+                                    Number(BigInt(data[5]?.toString() || "0")) *
+                                        1000
+                                ),
+                                fundraiserId: index,
+                            };
+
+                            userFundraisers.push(proposal);
+                        }
+                    }
+                });
+
+                setProposals(userFundraisers);
+            } catch (error) {
+                console.error("Error processing fundraisers:", error);
+            } finally {
+                setLoading(false);
+            }
         };
 
-        fetchProposals();
-    }, [type]);
+        if (address && proposalCount && fundraisersData) {
+            fetchUserFundraisers();
+        } else {
+            setLoading(false);
+        }
+    }, [address, proposalCount, fundraisersData]);
 
-    // Mock function for voting - would be replaced with actual contract calls
+    // Function to vote on a proposal
     const handleVote = async (
         proposalId: number,
         voteType: "for" | "against"
@@ -123,31 +275,23 @@ export default function ProposalsList({ type }: ProposalsListProps) {
             [proposalId]: { loading: true, voted: false, vote: voteType },
         }));
 
-        // Simulate API call delay
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        try {
+            writeContract({
+                address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
+                abi: FundAllocationABI,
+                functionName: "vote",
+                args: [BigInt(proposalId), voteType === "for"],
+            });
 
-        // Update the proposal with the new vote
-        setProposals((prevProposals) =>
-            prevProposals.map((p) => {
-                if (p.id === proposalId) {
-                    if (voteType === "for") {
-                        return { ...p, votesFor: p.votesFor + 1 };
-                    } else {
-                        return { ...p, votesAgainst: p.votesAgainst + 1 };
-                    }
-                }
-                return p;
-            })
-        );
-
-        // Update voting status
-        setVotingStatus((prev) => ({
-            ...prev,
-            [proposalId]: { loading: false, voted: true, vote: voteType },
-        }));
-
-        // Simple custom notification
-        console.log(`You voted ${voteType} proposal #${proposalId}`);
+            // Note: We don't update the state here because we'll refresh
+            // the data once the transaction is confirmed in the useEffect above
+        } catch (error) {
+            console.error("Error voting on proposal:", error);
+            setVotingStatus((prev) => ({
+                ...prev,
+                [proposalId]: { loading: false, voted: false },
+            }));
+        }
     };
 
     // Calculate approval percentage
@@ -173,7 +317,7 @@ export default function ProposalsList({ type }: ProposalsListProps) {
             ) : proposals.length === 0 ? (
                 <div className="text-center py-8">
                     <p className="text-gray-500 dark:text-gray-400">
-                        No {type} proposals found.
+                        No {status} proposals found.
                     </p>
                 </div>
             ) : (
@@ -293,7 +437,7 @@ export default function ProposalsList({ type }: ProposalsListProps) {
                                     </Link>
 
                                     {proposal.status === "active" &&
-                                        type === "active" && (
+                                        status === "active" && (
                                             <div className="flex space-x-4">
                                                 <button
                                                     onClick={() =>

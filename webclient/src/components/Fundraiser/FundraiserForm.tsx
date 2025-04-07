@@ -158,28 +158,21 @@ export default function FundraiserForm({
 
             // Convert form values to appropriate types for the contract call
             const targetAmountInWei = parseEther(formData.targetAmount);
-            const durationInDays = BigInt(parseInt(formData.duration));
 
             console.log("Creating fundraiser with data:", {
                 name: formData.name,
                 description: formData.description,
                 targetAmount: formData.targetAmount,
                 targetAmountWei: targetAmountInWei.toString(),
-                durationDays: durationInDays.toString(),
                 contractAddress: FUND_ALLOCATION_ADDRESS,
             });
 
-            // Call the contract
+            // Call the contract with updated parameters (removed durationInDays)
             const tx = await writeContract({
                 address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
                 abi: fundAllocationABI,
                 functionName: "createFundraiser",
-                args: [
-                    formData.name,
-                    formData.description,
-                    targetAmountInWei,
-                    durationInDays,
-                ],
+                args: [formData.name, formData.description, targetAmountInWei],
             });
 
             console.log("Transaction submitted with hash:", tx);

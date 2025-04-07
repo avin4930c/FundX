@@ -36,7 +36,7 @@ export default function Page() {
 
                         <div className="mt-12 text-center">
                             <Link
-                                href="/explore"
+                                href="/fundraisers"
                                 className="inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                                 View All Fundraisers
                             </Link>
@@ -150,7 +150,7 @@ export default function Page() {
                                 </li>
                                 <li>
                                     <Link
-                                        href="/explore"
+                                        href="/fundraisers"
                                         className="text-gray-400 hover:text-white">
                                         Explore Fundraisers
                                     </Link>

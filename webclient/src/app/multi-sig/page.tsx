@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
 import Link from "next/link";
-import ApprovedRequestsList from "@/components/MultiSig/ApprovedRequestsList";
+import WithdrawalRequestList from "@/components/MultiSig/WithdrawalRequestList";
 import SignatureOwnersList from "@/components/MultiSig/SignatureOwnersList";
 import Header from "@/components/Layout/Header";
 
@@ -19,7 +19,7 @@ export default function MultiSigPage() {
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-            <Header pageTitle="Multi-Signature Wallet" />
+            <Header pageTitle="Withdrawal Approval System" />
 
             <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
                 <div className="px-4 py-6 sm:px-0">
@@ -27,12 +27,12 @@ export default function MultiSigPage() {
                         <div className="text-center py-12">
                             <div className="inline-block p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
                                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-                                    Connect your wallet to access the Multi-Sig
+                                    Connect your wallet to access the Approval
                                     interface
                                 </h2>
                                 <p className="text-gray-600 dark:text-gray-400 mb-6">
                                     You need to connect your wallet to view and
-                                    approve transactions.
+                                    approve withdrawal requests.
                                 </p>
                                 <ConnectButton />
                             </div>
@@ -44,8 +44,8 @@ export default function MultiSigPage() {
                                     Access Restricted
                                 </h2>
                                 <p className="text-gray-600 dark:text-gray-400 mb-6">
-                                    Only authorized multi-signature wallet
-                                    owners can access this interface.
+                                    Only authorized signers can access this
+                                    interface.
                                 </p>
                                 <Link
                                     href="/"
@@ -58,9 +58,9 @@ export default function MultiSigPage() {
                         <>
                             <div className="mb-8">
                                 <p className="text-lg text-gray-600 dark:text-gray-400 mb-6">
-                                    As a multi-signature wallet owner, you can
-                                    review and approve fund disbursements that
-                                    have passed the DAO governance vote.
+                                    As an authorized signer, you can review and
+                                    approve withdrawal requests submitted by
+                                    fundraiser owners.
                                 </p>
 
                                 <div className="bg-white dark:bg-gray-800 shadow overflow-hidden rounded-lg">
@@ -91,7 +91,7 @@ export default function MultiSigPage() {
                                         </nav>
                                     </div>
                                     <div className="px-4 py-5 sm:p-6">
-                                        <ApprovedRequestsList
+                                        <WithdrawalRequestList
                                             type={activeTab}
                                         />
                                     </div>
@@ -101,11 +101,11 @@ export default function MultiSigPage() {
                             <div className="bg-white dark:bg-gray-800 shadow overflow-hidden rounded-lg mt-8">
                                 <div className="px-4 py-5 sm:px-6">
                                     <h3 className="text-lg font-medium text-gray-900 dark:text-white">
-                                        Multi-Signature Owners
+                                        Authorized Signers
                                     </h3>
                                     <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                                         The following addresses are authorized
-                                        to sign transactions.
+                                        to approve withdrawal requests.
                                     </p>
                                 </div>
                                 <div className="border-t border-gray-200 dark:border-gray-700">
@@ -118,7 +118,7 @@ export default function MultiSigPage() {
                             <div className="bg-white dark:bg-gray-800 shadow overflow-hidden rounded-lg mt-8">
                                 <div className="px-4 py-5 sm:p-6">
                                     <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-                                        About Multi-Signature Approval
+                                        About the Approval Process
                                     </h2>
                                     <div className="prose dark:prose-dark max-w-none">
                                         <p className="text-gray-600 dark:text-gray-400">
@@ -131,17 +131,19 @@ export default function MultiSigPage() {
                                         </h3>
                                         <ul className="list-disc pl-5 text-gray-600 dark:text-gray-400 space-y-2">
                                             <li>
-                                                Fund requests approved by the
-                                                DAO are sent to the
-                                                multi-signature wallet
+                                                Fundraiser owners submit
+                                                withdrawal requests via the Fund
+                                                Requests page
                                             </li>
                                             <li>
-                                                At least 2 out of 3 owners must
-                                                approve each transaction
+                                                At least 2 out of 3 authorized
+                                                signers must approve each
+                                                withdrawal request
                                             </li>
                                             <li>
                                                 Once threshold is met, funds are
-                                                automatically released
+                                                automatically released to the
+                                                fundraiser owner
                                             </li>
                                             <li>
                                                 All transactions are recorded on

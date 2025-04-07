@@ -26,50 +26,37 @@ type Fundraiser = {
     timeLeft: string;
 };
 
-export const ActiveFundraisers = () => {
-    const { isConnected } = useAccount();
+export const AllFundraisers = () => {
+    const { isConnected, address } = useAccount();
     const [fundraisers, setFundraisers] = useState<Fundraiser[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [donationAmounts, setDonationAmounts] = useState<{
         [key: number]: string;
     }>({});
-    const [isLoading, setIsLoading] = useState(true);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
+    const publicClient = usePublicClient();
 
-    // Get fundraiser count - adding watch to update when new fundraisers are created
-    const { data: fundraiserCount, refetch: refetchFundraiserCount } =
-        useContractReads({
-            contracts: [
-                {
-                    address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
-                    abi: fundAllocationABI,
-                    functionName: "getFundraiserCount",
-                },
-            ],
-            query: {
-                enabled: true,
-                refetchInterval: 10000, // Refetch every 10 seconds
+    // Get fundraiser count from contract
+    const { data: fundraiserCount } = useContractReads({
+        contracts: [
+            {
+                address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
+                abi: fundAllocationABI,
+                functionName: "getFundraiserCount",
             },
-        });
-
-    // Donate function
-    const { writeContract, data: donationHash } = useWriteContract();
-
-    // Wait for donation transaction confirmation
-    const { isSuccess: isDonationSuccess } = useWaitForTransactionReceipt({
-        hash: donationHash,
+        ],
     });
 
-    // When donation is successful, trigger a refresh
-    useEffect(() => {
-        if (isDonationSuccess && donationHash) {
-            console.log("Donation confirmed, refreshing data...");
-            // Trigger refresh
-            setRefreshTrigger((prev) => prev + 1);
-            refetchFundraiserCount();
-        }
-    }, [isDonationSuccess, donationHash, refetchFundraiserCount]);
+    // For contract interaction to donate
+    const { writeContract, data: txHash } = useWriteContract();
 
-    // Update donation amount for a specific fundraiser
+    // Wait for transaction receipt
+    const { isLoading: isConfirming, isSuccess: isConfirmed } =
+        useWaitForTransactionReceipt({
+            hash: txHash,
+        });
+
+    // Handle donation amount input
     const handleDonationChange = (id: number, value: string) => {
         setDonationAmounts((prev) => ({
             ...prev,
@@ -77,107 +64,71 @@ export const ActiveFundraisers = () => {
         }));
     };
 
-    // Calculate time remaining helper function
+    // Calculate time remaining
     const getTimeRemaining = (deadline: bigint) => {
         const now = BigInt(Math.floor(Date.now() / 1000));
         if (deadline <= now) return "Ended";
 
-        const diff = Number(deadline - now);
-        const days = Math.floor(diff / 86400);
+        const secondsLeft = Number(deadline - now);
+        const daysLeft = Math.floor(secondsLeft / 86400);
 
-        if (days > 0) return `${days} day${days > 1 ? "s" : ""} left`;
+        if (daysLeft > 0) {
+            return `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
+        }
 
-        const hours = Math.floor(diff / 3600);
-        if (hours > 0) return `${hours} hour${hours > 1 ? "s" : ""} left`;
+        const hoursLeft = Math.floor(secondsLeft / 3600);
+        if (hoursLeft > 0) {
+            return `${hoursLeft} hour${hoursLeft === 1 ? "" : "s"} left`;
+        }
 
-        const minutes = Math.floor(diff / 60);
-        return `${minutes} minute${minutes > 1 ? "s" : ""} left`;
+        const minutesLeft = Math.floor(secondsLeft / 60);
+        return `${minutesLeft} minute${minutesLeft === 1 ? "" : "s"} left`;
     };
 
-    // Calculate progress percentage helper
+    // Calculate progress percentage
     const calculateProgress = (current: bigint, target: bigint): number => {
         if (target === BigInt(0)) return 0;
-
-        // Convert BigInt values to strings first, then to numbers to avoid precision issues
-        const currentNum = Number(current.toString());
-        const targetNum = Number(target.toString());
-
-        // Calculate the percentage using regular number operations
-        return Math.floor((currentNum / targetNum) * 100);
+        return Number((current * BigInt(100)) / target);
     };
-
-    // Get public client for direct contract reads
-    const publicClient = usePublicClient();
 
     // Handle donation submission
     const handleDonate = async (id: number) => {
+        if (!isConnected) {
+            alert("Please connect your wallet to donate");
+            return;
+        }
+
         const amount = donationAmounts[id];
-        if (!amount || parseFloat(amount) <= 0) {
+        if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
             alert("Please enter a valid donation amount");
             return;
         }
 
         try {
-            console.log(`Donating ${amount} ETH to fundraiser #${id}`);
+            console.log(
+                `Donating ${amount} ETH to fundraiser ${id} at contract ${FUND_ALLOCATION_ADDRESS}`
+            );
 
-            // Format contract address for console display
-            const contractAddressDisplay = FUND_ALLOCATION_ADDRESS
-                ? `${FUND_ALLOCATION_ADDRESS.substring(
-                      0,
-                      6
-                  )}...${FUND_ALLOCATION_ADDRESS.substring(
-                      FUND_ALLOCATION_ADDRESS.length - 4
-                  )}`
-                : "Not set";
-
-            console.log(`Contract address: ${contractAddressDisplay}`);
-            console.log(`Using function: donate with args: [${id}]`);
-
-            // Check if contract address is valid
-            if (!FUND_ALLOCATION_ADDRESS || FUND_ALLOCATION_ADDRESS === "") {
-                throw new Error(
-                    "Contract address is not configured. Please check your environment variables."
-                );
-            }
-
-            // For testing: Log contract address and function call details
-            console.log("Full details:", {
-                address: FUND_ALLOCATION_ADDRESS,
-                functionName: "donate",
-                args: [BigInt(id)],
-                value: parseEther(amount).toString(),
-            });
-
-            // Call the contract
-            await writeContract({
+            writeContract({
                 address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
                 abi: fundAllocationABI,
                 functionName: "donate",
                 args: [BigInt(id)],
                 value: parseEther(amount),
             });
-
-            // Show success message to user
-            alert("Transaction submitted! Please confirm in your wallet.");
-            console.log("Transaction submitted successfully");
         } catch (error) {
-            console.error("Error making donation:", error);
-            const errorMessage =
-                error instanceof Error ? error.message : String(error);
-            console.error("Detailed error:", errorMessage);
-
-            // Give user a more helpful error message
-            if (errorMessage.includes("user rejected")) {
-                alert("Transaction was rejected in your wallet.");
-            } else if (errorMessage.includes("insufficient funds")) {
-                alert(
-                    "You don't have enough ETH in your wallet for this donation."
-                );
-            } else {
-                alert(`Donation failed: ${errorMessage}`);
-            }
+            console.error("Error donating:", error);
+            alert(`Error making donation: ${error}`);
         }
     };
+
+    // When transaction is confirmed, refresh the fundraisers
+    useEffect(() => {
+        if (isConfirmed) {
+            // Trigger a refresh of the fundraisers data
+            setRefreshTrigger((prev) => prev + 1);
+        }
+    }, [isConfirmed]);
 
     // Load real fundraiser data from the blockchain
     useEffect(() => {
@@ -341,13 +292,13 @@ export const ActiveFundraisers = () => {
                     fetchedFundraisers.length
                 );
 
-                // Filter out any null results and only include active fundraisers
+                // Filter out any null results (but don't filter by active status)
                 const validFundraisers = fetchedFundraisers.filter(
-                    (f): f is Fundraiser => f !== null && f.active
+                    (f): f is Fundraiser => f !== null
                 );
 
                 console.log(
-                    "Valid active fundraisers:",
+                    "Valid fundraisers (all statuses):",
                     validFundraisers.length
                 );
 
@@ -380,8 +331,11 @@ export const ActiveFundraisers = () => {
 
     if (isLoading) {
         return (
-            <div className="flex justify-center py-20">
+            <div className="flex justify-center items-center py-10">
                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                <span className="ml-3 text-gray-600 dark:text-gray-400">
+                    Loading fundraisers...
+                </span>
             </div>
         );
     }
@@ -389,19 +343,17 @@ export const ActiveFundraisers = () => {
     if (fundraisers.length === 0) {
         return (
             <div className="text-center py-10">
-                <h3 className="text-xl font-medium text-gray-900 dark:text-white">
-                    No active fundraisers
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                    No fundraisers found
                 </h3>
-                <p className="mt-2 text-gray-600 dark:text-gray-400">
+                <p className="text-gray-500 dark:text-gray-400 mb-4">
                     Be the first to create a fundraiser!
                 </p>
-                <div className="mt-5">
-                    <Link
-                        href="/create"
-                        className="inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-                        Create Fundraiser
-                    </Link>
-                </div>
+                <Link
+                    href="/create"
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Create a Fundraiser
+                </Link>
             </div>
         );
     }
@@ -411,84 +363,104 @@ export const ActiveFundraisers = () => {
             {fundraisers.map((fundraiser) => (
                 <div
                     key={fundraiser.id}
-                    className="bg-white dark:bg-gray-700 shadow rounded-lg overflow-hidden">
-                    {/* Fundraiser Image (placeholder) */}
-                    <div className="h-48 bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center">
-                        <span className="text-white text-4xl font-bold">
-                            {fundraiser.name.charAt(0)}
-                        </span>
-                    </div>
-
-                    <div className="p-6">
+                    className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg border border-gray-200 dark:border-gray-700">
+                    <div className="px-4 py-5 sm:p-6">
                         <div className="flex justify-between items-start">
-                            <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                            <h3 className="text-lg font-medium text-gray-900 dark:text-white truncate">
                                 {fundraiser.name}
                             </h3>
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">
-                                {fundraiser.timeLeft}
+                            <span
+                                className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                    fundraiser.active
+                                        ? "bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-100"
+                                        : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100"
+                                }`}>
+                                {fundraiser.active ? "Active" : "Completed"}
                             </span>
                         </div>
-
-                        <p className="mt-2 text-gray-600 dark:text-gray-300 text-sm line-clamp-2">
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
                             {fundraiser.description}
                         </p>
 
+                        {/* Progress bar */}
                         <div className="mt-4">
-                            <div className="flex justify-between text-sm mb-1">
-                                <span className="text-gray-500 dark:text-gray-400">
-                                    Progress
-                                </span>
-                                <span className="text-gray-700 dark:text-gray-300">
-                                    {fundraiser.progress}%
-                                </span>
-                            </div>
-                            <div className="overflow-hidden h-2 text-xs flex rounded bg-gray-200 dark:bg-gray-600">
+                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
                                 <div
-                                    style={{ width: `${fundraiser.progress}%` }}
-                                    className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500"></div>
+                                    className="bg-blue-600 h-2.5 rounded-full"
+                                    style={{
+                                        width: `${Math.min(
+                                            100,
+                                            fundraiser.progress
+                                        )}%`,
+                                    }}></div>
+                            </div>
+                            <div className="flex justify-between text-xs mt-1">
+                                <span className="text-gray-500 dark:text-gray-400">
+                                    {fundraiser.progress}% Funded
+                                </span>
+                                <span className="text-gray-500 dark:text-gray-400">
+                                    {fundraiser.timeLeft}
+                                </span>
                             </div>
                         </div>
 
-                        <div className="mt-2 flex justify-between text-sm">
-                            <span className="text-gray-500 dark:text-gray-400">
-                                Raised: {formatEther(fundraiser.currentAmount)}{" "}
-                                ETH
-                            </span>
-                            <span className="text-gray-700 dark:text-gray-300">
-                                Goal: {formatEther(fundraiser.targetAmount)} ETH
+                        {/* Donation details */}
+                        <div className="mt-3 flex justify-between items-baseline">
+                            <span className="text-gray-600 dark:text-gray-400 text-sm">
+                                {formatEther(fundraiser.currentAmount)} ETH of{" "}
+                                {formatEther(fundraiser.targetAmount)} ETH
                             </span>
                         </div>
 
-                        <div className="mt-6 flex items-center">
-                            <div className="flex-1">
-                                <input
-                                    type="number"
-                                    min="0.01"
-                                    step="0.01"
-                                    value={donationAmounts[fundraiser.id] || ""}
-                                    onChange={(e) =>
-                                        handleDonationChange(
-                                            fundraiser.id,
-                                            e.target.value
-                                        )
-                                    }
-                                    className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-md p-2"
-                                    placeholder="ETH amount"
-                                    disabled={!isConnected}
-                                />
+                        {/* Donation form - only show for active fundraisers */}
+                        {fundraiser.active && (
+                            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <div className="flex space-x-2">
+                                    <div className="relative rounded-md shadow-sm flex-1">
+                                        <input
+                                            type="text"
+                                            value={
+                                                donationAmounts[
+                                                    fundraiser.id
+                                                ] || ""
+                                            }
+                                            onChange={(e) =>
+                                                handleDonationChange(
+                                                    fundraiser.id,
+                                                    e.target.value
+                                                )
+                                            }
+                                            className="focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md"
+                                            placeholder="Amount"
+                                        />
+                                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                            <span className="text-gray-500 dark:text-gray-400 sm:text-sm">
+                                                ETH
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() =>
+                                            handleDonate(fundraiser.id)
+                                        }
+                                        disabled={!isConnected || isConfirming}
+                                        className={`inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white ${
+                                            !isConnected || isConfirming
+                                                ? "bg-gray-400 cursor-not-allowed"
+                                                : "bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                        }`}>
+                                        {isConfirming
+                                            ? "Processing..."
+                                            : "Donate"}
+                                    </button>
+                                </div>
+                                {!isConnected && (
+                                    <p className="mt-1 text-xs text-red-500">
+                                        Connect wallet to donate
+                                    </p>
+                                )}
                             </div>
-                            <button
-                                onClick={() => handleDonate(fundraiser.id)}
-                                disabled={!isConnected}
-                                className={`ml-3 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white 
-                  ${
-                      isConnected
-                          ? "bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                          : "bg-gray-400 cursor-not-allowed"
-                  }`}>
-                                Donate
-                            </button>
-                        </div>
+                        )}
 
                         <div className="mt-4 text-center">
                             <Link
