@@ -21,9 +21,12 @@ async function main() {
         owners,
         requiredConfirmations
     );
-    await fundAllocation.deployed();
 
-    console.log(`FundAllocation deployed to: ${fundAllocation.address}`);
+    // Wait for deployment to complete
+    await fundAllocation.waitForDeployment();
+
+    const contractAddress = await fundAllocation.getAddress();
+    console.log(`FundAllocation deployed to: ${contractAddress}`);
     console.log(`Multi-sig owners: ${owners}`);
     console.log(`Required confirmations: ${requiredConfirmations}`);
 
@@ -34,30 +37,30 @@ async function main() {
         {
             name: "Clean Water Initiative",
             description: "Providing clean water access to rural communities",
-            goal: ethers.utils.parseEther("5"),
+            goal: ethers.parseEther("5"),
         },
         {
             name: "Education for All",
             description:
                 "Supporting education in underprivileged communities with supplies",
-            goal: ethers.utils.parseEther("3"),
+            goal: ethers.parseEther("3"),
         },
         {
             name: "Healthcare Outreach",
             description:
                 "Mobile clinics for remote villages without hospital access",
-            goal: ethers.utils.parseEther("10"),
+            goal: ethers.parseEther("10"),
         },
         {
             name: "Renewable Energy Project",
             description: "Installing solar panels in off-grid communities",
-            goal: ethers.utils.parseEther("8"),
+            goal: ethers.parseEther("8"),
         },
         {
             name: "Food Security Program",
             description:
                 "Supporting local farmers and distributing food to families in need",
-            goal: ethers.utils.parseEther("4"),
+            goal: ethers.parseEther("4"),
         },
     ];
 
@@ -80,11 +83,11 @@ async function main() {
     console.log("\nMaking sample donations...");
 
     // Donate to first fundraiser
-    await fundAllocation.donate(0, { value: ethers.utils.parseEther("2.5") });
+    await fundAllocation.donate(0, { value: ethers.parseEther("2.5") });
     console.log("Donated 2.5 ETH to fundraiser #0");
 
     // Donate to second fundraiser
-    await fundAllocation.donate(1, { value: ethers.utils.parseEther("1.5") });
+    await fundAllocation.donate(1, { value: ethers.parseEther("1.5") });
     console.log("Donated 1.5 ETH to fundraiser #1");
 
     // Create a withdrawal request
@@ -92,7 +95,7 @@ async function main() {
     await fundAllocation.createWithdrawalRequest(
         0,
         "For water purification equipment",
-        ethers.utils.parseEther("1")
+        ethers.parseEther("1")
     );
     console.log("Created withdrawal request for fundraiser #0");
 
@@ -108,13 +111,13 @@ async function main() {
         // Replace the contract address line
         envContent = envContent.replace(
             /NEXT_PUBLIC_CONTRACT_ADDRESS=.*/,
-            `NEXT_PUBLIC_CONTRACT_ADDRESS=${fundAllocation.address}`
+            `NEXT_PUBLIC_CONTRACT_ADDRESS=${contractAddress}`
         );
 
         // Write back the updated .env file
         fs.writeFileSync(envPath, envContent);
         console.log(
-            `\nUpdated contract address in .env file: ${fundAllocation.address}`
+            `\nUpdated contract address in .env file: ${contractAddress}`
         );
     } catch (err) {
         console.error("Error updating .env file:", err);
