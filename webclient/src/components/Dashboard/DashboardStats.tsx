@@ -68,18 +68,26 @@ export const DashboardStats = () => {
                         if (result) {
                             const fundraiserData = result as any;
                             const status = Number(fundraiserData.status || 0);
+
+                            // Status 1 is Active, Status 2 is Funded in the contract's enum
                             if (status === 1) {
-                                // Active status
                                 activeCount++;
                             } else if (status === 2) {
-                                // Funded status
                                 successfulCount++;
                             }
+
+                            console.log(`Fundraiser ${i} status:`, status);
                         }
                     } catch (error) {
                         console.error(`Error fetching fundraiser ${i}:`, error);
                     }
                 }
+
+                console.log("Fundraiser counts:", {
+                    total: count,
+                    active: activeCount,
+                    successful: successfulCount,
+                });
 
                 newStats.totalProjects = count.toString();
                 newStats.activeFundraisers = activeCount.toString();

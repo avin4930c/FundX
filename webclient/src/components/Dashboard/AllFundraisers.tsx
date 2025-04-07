@@ -12,25 +12,14 @@ import {
 import { formatEther, parseEther } from "viem";
 import { FUND_ALLOCATION_ADDRESS } from "../../../config/wagmi";
 import { fundAllocationABI } from "@/contracts/abis";
-
-// Updated Fundraiser type to match the contract structure
-type Fundraiser = {
-    id: number;
-    name: string;
-    description: string;
-    creator: string;
-    targetAmount: bigint;
-    currentAmount: bigint;
-    status: number; // Using the enum value from the contract
-    active: boolean; // Derived from status
-    progress: number;
-    timeLeft: string;
-};
+import { MilestoneList } from "./MilestoneList";
+import { Fundraiser, Milestone } from "@/types";
 
 export const AllFundraisers = () => {
     const { isConnected, address } = useAccount();
     const [fundraisers, setFundraisers] = useState<Fundraiser[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [donationAmounts, setDonationAmounts] = useState<{
         [key: number]: string;
     }>({});
@@ -186,7 +175,7 @@ export const AllFundraisers = () => {
                         const result = await publicClient.readContract({
                             address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
                             abi: fundAllocationABI,
-                            functionName: "fundraisers",
+                            functionName: "getFundraiserDetails",
                             args: [BigInt(id)],
                         });
 
@@ -194,8 +183,6 @@ export const AllFundraisers = () => {
 
                         if (result) {
                             try {
-                                // The contract returns a struct with these fields:
-                                // id, name, description, goal, raised, creator, status
                                 const fundraiserData = result as any;
 
                                 if (!fundraiserData) {
@@ -205,32 +192,37 @@ export const AllFundraisers = () => {
                                     return null;
                                 }
 
-                                // Extract data
-                                const name =
-                                    fundraiserData.name || `Fundraiser #${id}`;
-                                const description =
-                                    fundraiserData.description ||
-                                    "No description available";
-                                const creator =
-                                    fundraiserData.creator ||
-                                    "0x0000000000000000000000000000000000000000";
-                                const targetAmount = BigInt(
-                                    fundraiserData.goal?.toString() || "0"
-                                );
-                                const currentAmount = BigInt(
-                                    fundraiserData.raised?.toString() || "0"
-                                );
-                                const status = Number(
-                                    fundraiserData.status || 0
-                                );
+                                // Fetch milestones
+                                const milestones: Milestone[] = [];
+                                for (
+                                    let i = 0;
+                                    i < Number(fundraiserData.milestoneCount);
+                                    i++
+                                ) {
+                                    const milestone =
+                                        (await publicClient.readContract({
+                                            address:
+                                                FUND_ALLOCATION_ADDRESS as `0x${string}`,
+                                            abi: fundAllocationABI,
+                                            functionName: "getMilestone",
+                                            args: [BigInt(id), BigInt(i)],
+                                        })) as any;
 
-                                // Check status - 1 is Active in our enum
-                                const active = status === 1;
+                                    milestones.push({
+                                        description: milestone[0],
+                                        amount: milestone[1],
+                                        proof: milestone[2],
+                                        proofSubmitted: milestone[3],
+                                        approved: milestone[4],
+                                        fundsReleased: milestone[5],
+                                        yesVotes: milestone[6],
+                                        noVotes: milestone[7],
+                                    });
+                                }
 
-                                // Calculate progress percentage
                                 const progress = calculateProgress(
-                                    currentAmount,
-                                    targetAmount
+                                    fundraiserData.raisedAmount,
+                                    fundraiserData.targetAmount
                                 );
 
                                 // Calculate time remaining (using default)
@@ -238,25 +230,38 @@ export const AllFundraisers = () => {
 
                                 const fundraiser: Fundraiser = {
                                     id,
-                                    name,
-                                    description,
-                                    creator,
-                                    targetAmount,
-                                    currentAmount,
-                                    status,
-                                    active,
+                                    title:
+                                        fundraiserData.title ||
+                                        `Fundraiser #${id}`,
+                                    description:
+                                        fundraiserData.description ||
+                                        "No description available",
+                                    creator:
+                                        fundraiserData.creator ||
+                                        "0x0000000000000000000000000000000000000000",
+                                    targetAmount: fundraiserData.targetAmount,
+                                    raisedAmount: fundraiserData.raisedAmount,
+                                    active: fundraiserData.active || false,
+                                    milestoneCount: Number(
+                                        fundraiserData.milestoneCount
+                                    ),
+                                    currentMilestoneIndex: Number(
+                                        fundraiserData.currentMilestoneIndex
+                                    ),
+                                    milestones,
                                     progress,
-                                    timeLeft,
                                 };
 
                                 console.log(`Fundraiser ${id} processed:`, {
                                     id,
-                                    name,
-                                    progress,
-                                    active,
-                                    status,
-                                    currentAmount: currentAmount.toString(),
-                                    targetAmount: targetAmount.toString(),
+                                    title: fundraiser.title,
+                                    progress: fundraiser.progress,
+                                    active: fundraiser.active,
+                                    raisedAmount:
+                                        fundraiser.raisedAmount.toString(),
+                                    targetAmount:
+                                        fundraiser.targetAmount.toString(),
+                                    milestoneCount: fundraiser.milestoneCount,
                                 });
 
                                 return fundraiser;
@@ -359,110 +364,120 @@ export const AllFundraisers = () => {
     }
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="space-y-6">
             {fundraisers.map((fundraiser) => (
                 <div
                     key={fundraiser.id}
-                    className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg border border-gray-200 dark:border-gray-700">
-                    <div className="px-4 py-5 sm:p-6">
+                    className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+                    <div className="p-6">
                         <div className="flex justify-between items-start">
-                            <h3 className="text-lg font-medium text-gray-900 dark:text-white truncate">
-                                {fundraiser.name}
-                            </h3>
-                            <span
-                                className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                    fundraiser.active
-                                        ? "bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-100"
-                                        : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100"
-                                }`}>
-                                {fundraiser.active ? "Active" : "Completed"}
-                            </span>
+                            <div>
+                                <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                                    {fundraiser.title}
+                                </h3>
+                                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                                    {fundraiser.description}
+                                </p>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <span
+                                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                        fundraiser.active
+                                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                            : "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+                                    }`}>
+                                    {fundraiser.active ? "Active" : "Completed"}
+                                </span>
+                            </div>
                         </div>
-                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
-                            {fundraiser.description}
-                        </p>
 
-                        {/* Progress bar */}
-                        <div className="mt-4">
+                        <div className="mt-6">
+                            <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 mb-1">
+                                <span>Progress</span>
+                                <span>{fundraiser.progress}%</span>
+                            </div>
                             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
                                 <div
                                     className="bg-blue-600 h-2.5 rounded-full"
-                                    style={{
-                                        width: `${Math.min(
-                                            100,
-                                            fundraiser.progress
-                                        )}%`,
-                                    }}></div>
+                                    style={{ width: `${fundraiser.progress}%` }}
+                                />
                             </div>
-                            <div className="flex justify-between text-xs mt-1">
-                                <span className="text-gray-500 dark:text-gray-400">
-                                    {fundraiser.progress}% Funded
+                            <div className="flex justify-between mt-2">
+                                <span className="text-sm text-gray-500 dark:text-gray-400">
+                                    Raised:{" "}
+                                    {formatEther(fundraiser.raisedAmount)} ETH
                                 </span>
-                                <span className="text-gray-500 dark:text-gray-400">
-                                    {fundraiser.timeLeft}
+                                <span className="text-sm text-gray-500 dark:text-gray-400">
+                                    Target:{" "}
+                                    {formatEther(fundraiser.targetAmount)} ETH
                                 </span>
                             </div>
                         </div>
 
-                        {/* Donation details */}
-                        <div className="mt-3 flex justify-between items-baseline">
-                            <span className="text-gray-600 dark:text-gray-400 text-sm">
-                                {formatEther(fundraiser.currentAmount)} ETH of{" "}
-                                {formatEther(fundraiser.targetAmount)} ETH
-                            </span>
+                        {/* Milestones */}
+                        <div className="mt-6">
+                            <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                                Milestones
+                            </h4>
+                            <MilestoneList
+                                fundraiserId={fundraiser.id}
+                                milestoneCount={fundraiser.milestoneCount}
+                            />
                         </div>
 
-                        {/* Donation form - only show for active fundraisers */}
+                        {/* Donation Form */}
                         {fundraiser.active && (
-                            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                                <div className="flex space-x-2">
-                                    <div className="relative rounded-md shadow-sm flex-1">
-                                        <input
-                                            type="text"
-                                            value={
-                                                donationAmounts[
-                                                    fundraiser.id
-                                                ] || ""
-                                            }
-                                            onChange={(e) =>
-                                                handleDonationChange(
-                                                    fundraiser.id,
-                                                    e.target.value
-                                                )
-                                            }
-                                            className="focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md"
-                                            placeholder="Amount"
-                                        />
-                                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                                            <span className="text-gray-500 dark:text-gray-400 sm:text-sm">
-                                                ETH
-                                            </span>
-                                        </div>
-                                    </div>
+                            <div className="mt-6">
+                                <div className="flex space-x-4">
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={donationAmounts[fundraiser.id]}
+                                        onChange={(e) =>
+                                            setDonationAmounts({
+                                                ...donationAmounts,
+                                                [fundraiser.id]: e.target.value,
+                                            })
+                                        }
+                                        placeholder="Amount in ETH"
+                                        className="flex-1 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    />
                                     <button
                                         onClick={() =>
                                             handleDonate(fundraiser.id)
                                         }
                                         disabled={!isConnected}
-                                        className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white 
-                                        ${
-                                            isConnected
-                                                ? "bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                                                : "bg-gray-400 cursor-not-allowed"
-                                        }`}>
-                                        Donate
+                                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        {isConnected ? (
+                                            "Donate"
+                                        ) : (
+                                            <>
+                                                <svg
+                                                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                                                    fill="none"
+                                                    viewBox="0 0 24 24">
+                                                    <circle
+                                                        className="opacity-25"
+                                                        cx="12"
+                                                        cy="12"
+                                                        r="10"
+                                                        stroke="currentColor"
+                                                        strokeWidth="4"
+                                                    />
+                                                    <path
+                                                        className="opacity-75"
+                                                        fill="currentColor"
+                                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                                    />
+                                                </svg>
+                                                Connecting...
+                                            </>
+                                        )}
                                     </button>
                                 </div>
                             </div>
                         )}
-
-                        <div className="mt-4 text-center">
-                            <Link
-                                href={`/fundraiser/${fundraiser.id}`}
-                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-sm font-medium">
-                                View Details
-                            </Link>
-                        </div>
                     </div>
                 </div>
             ))}

@@ -16,5 +16,5 @@ export const wagmiConfig = getDefaultConfig({
     ]),
     [hardhat.id]: viemHttp('http://127.0.0.1:8545')
   },
-  ssr: true
+  ssr: false
 });

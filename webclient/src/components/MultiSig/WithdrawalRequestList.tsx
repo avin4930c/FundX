@@ -8,7 +8,7 @@ import {
     useWaitForTransactionReceipt,
 } from "wagmi";
 import { formatEther } from "viem";
-import { FundAllocationABI } from "../../abi/FundAllocationABI";
+import { fundAllocationABI } from "@/contracts/abis";
 import { formatEthereumAddress } from "@/lib/addressUtils";
 import { MULTISIG_CONTRACT_ADDRESS } from "@/constants/addresses";
 
@@ -32,7 +32,7 @@ export default function WithdrawalRequestList({
 }: WithdrawalRequestListProps) {
     const { address } = useAccount();
     const [requests, setRequests] = useState<WithdrawalRequest[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [processingId, setProcessingId] = useState<number | null>(null);
     const [requiredApprovals, setRequiredApprovals] = useState<number>(2);
@@ -61,14 +61,14 @@ export default function WithdrawalRequestList({
     // Get required approvals
     const { data: requiredApprovalsData } = useReadContract({
         address: MULTISIG_CONTRACT_ADDRESS as `0x${string}`,
-        abi: FundAllocationABI,
+        abi: fundAllocationABI,
         functionName: "required",
     });
 
     // Get total withdrawal requests count
     const { data: withdrawalRequestCount } = useReadContract({
         address: MULTISIG_CONTRACT_ADDRESS as `0x${string}`,
-        abi: FundAllocationABI,
+        abi: fundAllocationABI,
         functionName: "getWithdrawalRequestCount",
     });
 
@@ -76,7 +76,7 @@ export default function WithdrawalRequestList({
     useEffect(() => {
         const fetchRequests = async () => {
             try {
-                setLoading(true);
+                setIsLoading(true);
 
                 if (withdrawalRequestCount && requiredApprovalsData) {
                     const count = Number(withdrawalRequestCount);
@@ -104,18 +104,14 @@ export default function WithdrawalRequestList({
                     }
 
                     setRequests(tempRequests);
-                } else if (!withdrawalRequestCount) {
-                    // Fallback to mock data
-                    provideMockData();
                 }
             } catch (err) {
                 console.error("Error fetching withdrawal requests:", err);
                 setError(
                     "Failed to load withdrawal requests. Please try again."
                 );
-                provideMockData();
             } finally {
-                setLoading(false);
+                setIsLoading(false);
             }
         };
 
@@ -163,50 +159,6 @@ export default function WithdrawalRequestList({
         };
     };
 
-    // Provide mock data if needed
-    const provideMockData = () => {
-        if (type === "pending") {
-            setRequests([
-                {
-                    id: 0,
-                    fundraiserId: 1,
-                    amount: BigInt(1000000000000000000), // 1 ETH
-                    to: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-                    reason: "Operating expenses",
-                    executed: false,
-                    approvers: address ? [address] : [],
-                    approvalCount: address ? 1 : 0,
-                },
-                {
-                    id: 2,
-                    fundraiserId: 3,
-                    amount: BigInt(500000000000000000), // 0.5 ETH
-                    to: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
-                    reason: "Marketing campaign",
-                    executed: false,
-                    approvers: [],
-                    approvalCount: 0,
-                },
-            ]);
-        } else {
-            setRequests([
-                {
-                    id: 1,
-                    fundraiserId: 2,
-                    amount: BigInt(2000000000000000000), // 2 ETH
-                    to: "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
-                    reason: "Team salaries",
-                    executed: true,
-                    approvers: [
-                        "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-                        "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-                    ],
-                    approvalCount: 2,
-                },
-            ]);
-        }
-    };
-
     // Handle approve button click
     const handleApprove = async (requestId: number) => {
         if (!address) return;
@@ -215,7 +167,7 @@ export default function WithdrawalRequestList({
             setProcessingId(requestId);
             approveRequest({
                 address: MULTISIG_CONTRACT_ADDRESS as `0x${string}`,
-                abi: FundAllocationABI,
+                abi: fundAllocationABI,
                 functionName: "approveWithdrawalRequest",
                 args: [BigInt(requestId)],
             });
@@ -234,7 +186,7 @@ export default function WithdrawalRequestList({
             setProcessingId(requestId);
             executeRequest({
                 address: MULTISIG_CONTRACT_ADDRESS as `0x${string}`,
-                abi: FundAllocationABI,
+                abi: fundAllocationABI,
                 functionName: "executeWithdrawalRequest",
                 args: [BigInt(requestId)],
             });
@@ -269,7 +221,7 @@ export default function WithdrawalRequestList({
         return request.approvers.includes(address);
     };
 
-    if (loading) {
+    if (isLoading) {
         return (
             <div className="animate-pulse space-y-4">
                 {[1, 2, 3].map((i) => (

@@ -218,14 +218,15 @@ export const ActiveFundraisers = () => {
 
             const fundraiserData = result as any;
             const status = Number(fundraiserData.status || 0);
-            const isActive = status === 1; // 1 represents Active status
+            // Status 1 is Active in the contract's enum
+            const isActive = status === 1;
 
             // Parse amounts as BigInt to handle them correctly
             const targetAmount = fundraiserData.goal
-                ? BigInt(fundraiserData.goal)
+                ? BigInt(fundraiserData.goal.toString())
                 : BigInt(0);
             const currentAmount = fundraiserData.raised
-                ? BigInt(fundraiserData.raised)
+                ? BigInt(fundraiserData.raised.toString())
                 : BigInt(0);
 
             console.log("Fundraiser details:", {
@@ -234,8 +235,10 @@ export const ActiveFundraisers = () => {
                 targetAmount: targetAmount.toString(),
                 currentAmount: currentAmount.toString(),
                 status,
+                isActive,
             });
 
+            // Only return active fundraisers
             if (!isActive) {
                 console.log(
                     `Fundraiser ${id} is not active, status: ${status}`
@@ -255,7 +258,7 @@ export const ActiveFundraisers = () => {
                 status,
                 active: isActive,
                 progress,
-                timeLeft: "N/A", // Time left is not tracked in the contract
+                timeLeft: getTimeRemaining(),
             } as Fundraiser;
         } catch (error) {
             console.error(`Error fetching fundraiser ${id}:`, error);
