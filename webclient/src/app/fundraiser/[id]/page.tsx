@@ -10,6 +10,7 @@ import Header from "@/components/Layout/Header";
 import { FUND_ALLOCATION_ADDRESS } from "../../../../config/wagmi";
 import { fundAllocationABI } from "@/contracts/abis";
 
+// Updated Fundraiser type to match the contract structure
 type Fundraiser = {
     id: number;
     name: string;
@@ -17,8 +18,8 @@ type Fundraiser = {
     creator: string;
     targetAmount: bigint;
     currentAmount: bigint;
-    deadline: bigint;
-    active: boolean;
+    status: number; // Using the enum value from the contract
+    active: boolean; // Derived from status
     progress: number;
     timeLeft: string;
 };
@@ -28,19 +29,47 @@ export default function FundraiserDetailsPage() {
     const params = useParams();
     const { isConnected } = useAccount();
     const publicClient = usePublicClient();
-
     const [fundraiser, setFundraiser] = useState<Fundraiser | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Calculate progress percentage
+    const calculateProgress = (current: bigint, target: bigint): number => {
+        if (target === BigInt(0)) return 0;
+
+        // Convert BigInt values to strings first, then to numbers to avoid precision issues
+        const currentNum = Number(current.toString());
+        const targetNum = Number(target.toString());
+
+        // Calculate the percentage using regular number operations
+        return Math.floor((currentNum / targetNum) * 100);
+    };
+
+    // Calculate time remaining
+    const getTimeRemaining = () => {
+        // Since we don't have a deadline in the contract, we'll use a default of 30 days
+        const now = new Date();
+        const futureDate = new Date(now);
+        futureDate.setDate(futureDate.getDate() + 30);
+
+        const diff = futureDate.getTime() - now.getTime();
+        const daysLeft = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+        if (daysLeft > 0) {
+            return `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
+        }
+
+        const hoursLeft = Math.floor(diff / (1000 * 60 * 60));
+        if (hoursLeft > 0) {
+            return `${hoursLeft} hour${hoursLeft === 1 ? "" : "s"} left`;
+        }
+
+        const minutesLeft = Math.floor(diff / (1000 * 60));
+        return `${minutesLeft} minute${minutesLeft === 1 ? "" : "s"} left`;
+    };
+
     useEffect(() => {
         const fetchFundraiserDetails = async () => {
-            if (!params || !params.id) {
-                setError("Invalid fundraiser ID");
-                setLoading(false);
-                return;
-            }
-
             if (!publicClient) {
                 setError("Blockchain client not initialized");
                 setLoading(false);
@@ -62,241 +91,270 @@ export default function FundraiserDetailsPage() {
                 if (result) {
                     try {
                         // Extract fundraiser data from result
-                        const fundraiserData = result as any[];
+                        const fundraiserData = result as any;
 
-                        if (
-                            !Array.isArray(fundraiserData) ||
-                            fundraiserData.length < 7
-                        ) {
+                        if (!fundraiserData) {
                             throw new Error("Invalid fundraiser data format");
                         }
 
-                        // Extract data from array
-                        const name = fundraiserData[0] || `Fundraiser #${id}`;
+                        // Extract data
+                        const name = fundraiserData.name || `Fundraiser #${id}`;
                         const description =
-                            fundraiserData[1] || "No description available";
+                            fundraiserData.description ||
+                            "No description available";
                         const creator =
-                            fundraiserData[2] ||
+                            fundraiserData.creator ||
                             "0x0000000000000000000000000000000000000000";
                         const targetAmount = BigInt(
-                            fundraiserData[3]?.toString() || "0"
+                            fundraiserData.goal?.toString() || "0"
                         );
                         const currentAmount = BigInt(
-                            fundraiserData[4]?.toString() || "0"
+                            fundraiserData.raised?.toString() || "0"
                         );
-                        const deadline = BigInt(
-                            fundraiserData[5]?.toString() || "0"
-                        );
-                        const active = !!fundraiserData[6];
+                        const status = Number(fundraiserData.status || 0);
+
+                        // Check status - 1 is Active in our enum
+                        const active = status === 1;
 
                         // Calculate progress percentage
-                        const progress =
-                            targetAmount > 0
-                                ? Number(
-                                      (currentAmount * BigInt(100)) /
-                                          targetAmount
-                                  )
-                                : 0;
+                        const progress = calculateProgress(
+                            currentAmount,
+                            targetAmount
+                        );
 
-                        // Calculate time remaining
-                        const timeLeft = getTimeRemaining(deadline);
+                        // Calculate time remaining (using default)
+                        const timeLeft = getTimeRemaining();
 
-                        const fundraiserObj: Fundraiser = {
+                        const fundraiser: Fundraiser = {
                             id,
                             name,
                             description,
                             creator,
                             targetAmount,
                             currentAmount,
-                            deadline,
+                            status,
                             active,
                             progress,
                             timeLeft,
                         };
 
-                        setFundraiser(fundraiserObj);
+                        setFundraiser(fundraiser);
                         setError(null);
                     } catch (parseError) {
                         console.error(
                             "Error parsing fundraiser data:",
                             parseError
                         );
-                        setError("Error parsing fundraiser data");
+                        setError("Failed to parse fundraiser data");
                     }
                 } else {
                     setError("Fundraiser not found");
                 }
-            } catch (err) {
-                console.error("Error fetching fundraiser:", err);
-                setError("Error fetching fundraiser details");
+            } catch (error) {
+                console.error("Error fetching fundraiser:", error);
+                setError("Failed to load fundraiser details");
             } finally {
                 setLoading(false);
             }
         };
 
-        if (isConnected && publicClient) {
+        if (publicClient) {
             fetchFundraiserDetails();
-        } else {
-            setLoading(false);
         }
-    }, [params, isConnected, publicClient]);
+    }, [params.id, publicClient]);
 
-    // Helper function to calculate time remaining
-    function getTimeRemaining(deadline: bigint): string {
-        const now = BigInt(Math.floor(Date.now() / 1000));
-        if (deadline <= now) return "Ended";
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+                <Header
+                    pageTitle="Fundraiser Details"
+                    showBackButton
+                />
+                <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+                    <div className="flex justify-center items-center py-20">
+                        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
-        const secondsLeft = Number(deadline - now);
-        const daysLeft = Math.floor(secondsLeft / 86400);
-
-        if (daysLeft > 0) {
-            return `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
-        }
-
-        const hoursLeft = Math.floor(secondsLeft / 3600);
-        if (hoursLeft > 0) {
-            return `${hoursLeft} hour${hoursLeft === 1 ? "" : "s"} left`;
-        }
-
-        const minutesLeft = Math.floor(secondsLeft / 60);
-        return `${minutesLeft} minute${minutesLeft === 1 ? "" : "s"} left`;
+    if (error || !fundraiser) {
+        return (
+            <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+                <Header
+                    pageTitle="Fundraiser Details"
+                    showBackButton
+                />
+                <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+                    <div className="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg">
+                        <div className="px-4 py-5 sm:p-6">
+                            <div className="text-center">
+                                <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                                    {error || "Fundraiser not found"}
+                                </h3>
+                                <div className="mt-5">
+                                    <Link
+                                        href="/"
+                                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                        Return to Home
+                                    </Link>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
             <Header
-                pageTitle={fundraiser ? fundraiser.name : "Fundraiser Details"}
+                pageTitle={fundraiser.name}
+                showBackButton
             />
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {!isConnected ? (
-                    <div className="text-center py-8 bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                            Connect your wallet to view fundraiser details
-                        </h3>
-                        <p className="text-gray-500 dark:text-gray-400 mb-4">
-                            You need to connect your wallet to interact with the
-                            blockchain.
-                        </p>
-                        <div className="flex justify-center">
-                            <ConnectButton />
-                        </div>
-                    </div>
-                ) : loading ? (
-                    <div className="text-center py-8 bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-                        <div className="animate-pulse flex flex-col items-center">
-                            <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-4"></div>
-                            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-2"></div>
-                            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-2"></div>
-                            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/5 mb-2"></div>
-                            <div className="h-20 bg-gray-200 dark:bg-gray-700 rounded w-full mb-4"></div>
-                        </div>
-                    </div>
-                ) : error ? (
-                    <div className="text-center py-8 bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-                        <h3 className="text-lg font-medium text-red-600 dark:text-red-400 mb-2">
-                            Error
-                        </h3>
-                        <p className="text-gray-500 dark:text-gray-400 mb-4">
-                            {error}
-                        </p>
-                        <Link
-                            href="/"
-                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                            Back to Home
-                        </Link>
-                    </div>
-                ) : fundraiser ? (
-                    <div className="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg">
-                        <div className="px-4 py-5 sm:px-6">
-                            <h3 className="text-2xl font-bold leading-6 text-gray-900 dark:text-white">
-                                {fundraiser.name}
-                            </h3>
-                            <p className="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-                                Created by: {fundraiser.creator}
-                            </p>
-                        </div>
-                        <div className="border-t border-gray-200 dark:border-gray-700">
-                            <dl>
-                                <div className="bg-gray-50 dark:bg-gray-900 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                                    <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                        Description
-                                    </dt>
-                                    <dd className="mt-1 text-sm text-gray-900 dark:text-white sm:mt-0 sm:col-span-2">
-                                        {fundraiser.description}
-                                    </dd>
+            <main className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+                <div className="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg">
+                    <div className="px-4 py-5 sm:p-6">
+                        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                            {/* Fundraiser Image (placeholder) */}
+                            <div className="h-64 bg-gradient-to-r from-blue-400 to-purple-500 flex items-center justify-center rounded-lg">
+                                <span className="text-white text-6xl font-bold">
+                                    {fundraiser.name.charAt(0)}
+                                </span>
+                            </div>
+
+                            {/* Fundraiser Details */}
+                            <div>
+                                <div className="flex justify-between items-start">
+                                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                                        {fundraiser.name}
+                                    </h1>
+                                    <span
+                                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                            fundraiser.active
+                                                ? "bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-100"
+                                                : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100"
+                                        }`}>
+                                        {fundraiser.active
+                                            ? "Active"
+                                            : "Completed"}
+                                    </span>
                                 </div>
-                                <div className="bg-white dark:bg-gray-800 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                                    <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                        Target Amount
-                                    </dt>
-                                    <dd className="mt-1 text-sm text-gray-900 dark:text-white sm:mt-0 sm:col-span-2">
-                                        {formatEther(fundraiser.targetAmount)}{" "}
-                                        ETH
-                                    </dd>
+
+                                <p className="mt-2 text-gray-600 dark:text-gray-300">
+                                    {fundraiser.description}
+                                </p>
+
+                                {/* Progress bar */}
+                                <div className="mt-6">
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="text-gray-500 dark:text-gray-400">
+                                            Progress
+                                        </span>
+                                        <span className="text-gray-700 dark:text-gray-300">
+                                            {fundraiser.progress}%
+                                        </span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                                        <div
+                                            className="bg-blue-600 h-2.5 rounded-full"
+                                            style={{
+                                                width: `${Math.min(
+                                                    100,
+                                                    fundraiser.progress
+                                                )}%`,
+                                            }}></div>
+                                    </div>
                                 </div>
-                                <div className="bg-gray-50 dark:bg-gray-900 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                                    <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                        Current Amount
-                                    </dt>
-                                    <dd className="mt-1 text-sm text-gray-900 dark:text-white sm:mt-0 sm:col-span-2">
-                                        {formatEther(fundraiser.currentAmount)}{" "}
-                                        ETH
-                                    </dd>
+
+                                {/* Fundraising details */}
+                                <div className="mt-6 grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                                            Raised
+                                        </p>
+                                        <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                                            {formatEther(
+                                                fundraiser.currentAmount
+                                            )}{" "}
+                                            ETH
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                                            Goal
+                                        </p>
+                                        <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                                            {formatEther(
+                                                fundraiser.targetAmount
+                                            )}{" "}
+                                            ETH
+                                        </p>
+                                    </div>
                                 </div>
-                                <div className="bg-white dark:bg-gray-800 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                                    <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                        Progress
-                                    </dt>
-                                    <dd className="mt-1 text-sm text-gray-900 dark:text-white sm:mt-0 sm:col-span-2">
-                                        <div className="relative pt-1">
-                                            <div className="overflow-hidden h-2 mb-4 text-xs flex rounded bg-gray-200 dark:bg-gray-700">
-                                                <div
-                                                    style={{
-                                                        width: `${fundraiser.progress}%`,
-                                                    }}
-                                                    className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500"></div>
+
+                                {/* Creator info */}
+                                <div className="mt-6">
+                                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                                        Created by
+                                    </p>
+                                    <p className="mt-1 text-sm text-gray-900 dark:text-white font-mono">
+                                        {fundraiser.creator}
+                                    </p>
+                                </div>
+
+                                {/* Time remaining */}
+                                <div className="mt-6">
+                                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                                        Time Remaining
+                                    </p>
+                                    <p className="mt-1 text-sm text-gray-900 dark:text-white">
+                                        {fundraiser.timeLeft}
+                                    </p>
+                                </div>
+
+                                {/* Donation section - only show for active fundraisers */}
+                                {fundraiser.active && (
+                                    <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+                                        <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                                            Support this Fundraiser
+                                        </h2>
+                                        {isConnected ? (
+                                            <div className="flex space-x-2">
+                                                <div className="relative rounded-md shadow-sm flex-1">
+                                                    <input
+                                                        type="text"
+                                                        className="focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-md"
+                                                        placeholder="Amount in ETH"
+                                                    />
+                                                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                                        <span className="text-gray-500 dark:text-gray-400 sm:text-sm">
+                                                            ETH
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <button className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                                    Donate
+                                                </button>
                                             </div>
-                                            <div className="text-right">
-                                                <span className="text-sm font-semibold inline-block text-blue-600 dark:text-blue-400">
-                                                    {fundraiser.progress}%
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </dd>
-                                </div>
-                                <div className="bg-gray-50 dark:bg-gray-900 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                                    <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                        Status
-                                    </dt>
-                                    <dd className="mt-1 text-sm text-gray-900 dark:text-white sm:mt-0 sm:col-span-2">
-                                        {fundraiser.active ? (
-                                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-100">
-                                                Active • {fundraiser.timeLeft}
-                                            </span>
                                         ) : (
-                                            <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 dark:bg-red-800 text-red-800 dark:text-red-100">
-                                                Inactive
-                                            </span>
+                                            <div className="text-center">
+                                                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                                                    Connect your wallet to
+                                                    donate
+                                                </p>
+                                                <ConnectButton />
+                                            </div>
                                         )}
-                                    </dd>
-                                </div>
-                            </dl>
-                        </div>
-                        <div className="px-4 py-5 sm:px-6 flex justify-center space-x-4">
-                            <Link
-                                href="/"
-                                className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                                Back to Home
-                            </Link>
-                            <Link
-                                href={`/donate?id=${fundraiser.id}`}
-                                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                                Donate
-                            </Link>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
-                ) : null}
+                </div>
             </main>
         </div>
     );

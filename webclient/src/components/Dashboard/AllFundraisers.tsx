@@ -13,6 +13,7 @@ import { formatEther, parseEther } from "viem";
 import { FUND_ALLOCATION_ADDRESS } from "../../../config/wagmi";
 import { fundAllocationABI } from "@/contracts/abis";
 
+// Updated Fundraiser type to match the contract structure
 type Fundraiser = {
     id: number;
     name: string;
@@ -20,8 +21,8 @@ type Fundraiser = {
     creator: string;
     targetAmount: bigint;
     currentAmount: bigint;
-    deadline: bigint;
-    active: boolean;
+    status: number; // Using the enum value from the contract
+    active: boolean; // Derived from status
     progress: number;
     timeLeft: string;
 };
@@ -65,30 +66,38 @@ export const AllFundraisers = () => {
     };
 
     // Calculate time remaining
-    const getTimeRemaining = (deadline: bigint) => {
-        const now = BigInt(Math.floor(Date.now() / 1000));
-        if (deadline <= now) return "Ended";
+    const getTimeRemaining = () => {
+        // Since we don't have a deadline in the contract, we'll use a default of 30 days
+        const now = new Date();
+        const futureDate = new Date(now);
+        futureDate.setDate(futureDate.getDate() + 30);
 
-        const secondsLeft = Number(deadline - now);
-        const daysLeft = Math.floor(secondsLeft / 86400);
+        const diff = futureDate.getTime() - now.getTime();
+        const daysLeft = Math.floor(diff / (1000 * 60 * 60 * 24));
 
         if (daysLeft > 0) {
             return `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`;
         }
 
-        const hoursLeft = Math.floor(secondsLeft / 3600);
+        const hoursLeft = Math.floor(diff / (1000 * 60 * 60));
         if (hoursLeft > 0) {
             return `${hoursLeft} hour${hoursLeft === 1 ? "" : "s"} left`;
         }
 
-        const minutesLeft = Math.floor(secondsLeft / 60);
+        const minutesLeft = Math.floor(diff / (1000 * 60));
         return `${minutesLeft} minute${minutesLeft === 1 ? "" : "s"} left`;
     };
 
     // Calculate progress percentage
     const calculateProgress = (current: bigint, target: bigint): number => {
         if (target === BigInt(0)) return 0;
-        return Number((current * BigInt(100)) / target);
+
+        // Convert BigInt values to strings first, then to numbers to avoid precision issues
+        const currentNum = Number(current.toString());
+        const targetNum = Number(target.toString());
+
+        // Calculate the percentage using regular number operations
+        return Math.floor((currentNum / targetNum) * 100);
     };
 
     // Handle donation submission
@@ -99,38 +108,32 @@ export const AllFundraisers = () => {
         }
 
         const amount = donationAmounts[id];
-        if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
             alert("Please enter a valid donation amount");
             return;
         }
 
         try {
-            console.log(
-                `Donating ${amount} ETH to fundraiser ${id} at contract ${FUND_ALLOCATION_ADDRESS}`
-            );
+            // Convert ETH amount to Wei
+            const amountInWei = parseEther(amount);
 
-            writeContract({
+            // Call the contract's donate function
+            const tx = await writeContract({
                 address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
                 abi: fundAllocationABI,
                 functionName: "donate",
                 args: [BigInt(id)],
-                value: parseEther(amount),
+                value: amountInWei,
             });
+
+            console.log("Donation transaction submitted:", tx);
         } catch (error) {
             console.error("Error donating:", error);
-            alert(`Error making donation: ${error}`);
+            alert("Failed to submit donation. Please try again.");
         }
     };
 
-    // When transaction is confirmed, refresh the fundraisers
-    useEffect(() => {
-        if (isConfirmed) {
-            // Trigger a refresh of the fundraisers data
-            setRefreshTrigger((prev) => prev + 1);
-        }
-    }, [isConfirmed]);
-
-    // Load real fundraiser data from the blockchain
+    // Load fundraisers from the blockchain
     useEffect(() => {
         const loadFundraisers = async () => {
             setIsLoading(true);
@@ -217,16 +220,12 @@ export const AllFundraisers = () => {
                                 const currentAmount = BigInt(
                                     fundraiserData.raised?.toString() || "0"
                                 );
-
-                                // Since we don't have deadline in the new structure, use a default (30 days from now)
-                                const now = BigInt(
-                                    Math.floor(Date.now() / 1000)
+                                const status = Number(
+                                    fundraiserData.status || 0
                                 );
-                                const deadline =
-                                    now + BigInt(30 * 24 * 60 * 60); // 30 days from now
 
                                 // Check status - 1 is Active in our enum
-                                const active = fundraiserData.status === 1;
+                                const active = status === 1;
 
                                 // Calculate progress percentage
                                 const progress = calculateProgress(
@@ -234,8 +233,8 @@ export const AllFundraisers = () => {
                                     targetAmount
                                 );
 
-                                // Calculate time remaining (using our default deadline)
-                                const timeLeft = getTimeRemaining(deadline);
+                                // Calculate time remaining (using default)
+                                const timeLeft = getTimeRemaining();
 
                                 const fundraiser: Fundraiser = {
                                     id,
@@ -244,7 +243,7 @@ export const AllFundraisers = () => {
                                     creator,
                                     targetAmount,
                                     currentAmount,
-                                    deadline,
+                                    status,
                                     active,
                                     progress,
                                     timeLeft,
@@ -255,6 +254,7 @@ export const AllFundraisers = () => {
                                     name,
                                     progress,
                                     active,
+                                    status,
                                     currentAmount: currentAmount.toString(),
                                     targetAmount: targetAmount.toString(),
                                 });
@@ -323,7 +323,7 @@ export const AllFundraisers = () => {
         const intervalId = setInterval(() => {
             console.log("Auto-refreshing fundraisers data");
             setRefreshTrigger((prev) => prev + 1);
-        }, 30000); // Every 30 seconds
+        }, 30000);
 
         // Clean up interval on component unmount
         return () => clearInterval(intervalId);
@@ -443,22 +443,16 @@ export const AllFundraisers = () => {
                                         onClick={() =>
                                             handleDonate(fundraiser.id)
                                         }
-                                        disabled={!isConnected || isConfirming}
-                                        className={`inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white ${
-                                            !isConnected || isConfirming
-                                                ? "bg-gray-400 cursor-not-allowed"
-                                                : "bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                        disabled={!isConnected}
+                                        className={`inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white 
+                                        ${
+                                            isConnected
+                                                ? "bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                                : "bg-gray-400 cursor-not-allowed"
                                         }`}>
-                                        {isConfirming
-                                            ? "Processing..."
-                                            : "Donate"}
+                                        Donate
                                     </button>
                                 </div>
-                                {!isConnected && (
-                                    <p className="mt-1 text-xs text-red-500">
-                                        Connect wallet to donate
-                                    </p>
-                                )}
                             </div>
                         )}
 

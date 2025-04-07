@@ -22,7 +22,6 @@ export default function FundraiserForm({
         name: "",
         description: "",
         targetAmount: "",
-        duration: "30", // Default 30 days
     });
 
     // Form errors
@@ -30,7 +29,6 @@ export default function FundraiserForm({
         name?: string;
         description?: string;
         targetAmount?: string;
-        duration?: string;
     }>({});
 
     // Success/error messages
@@ -59,7 +57,6 @@ export default function FundraiserForm({
                 name: "",
                 description: "",
                 targetAmount: "",
-                duration: "30",
             });
 
             setIsSubmitting(false);
@@ -100,7 +97,6 @@ export default function FundraiserForm({
             name?: string;
             description?: string;
             targetAmount?: string;
-            duration?: string;
         } = {};
 
         if (!formData.name.trim()) {
@@ -118,15 +114,6 @@ export default function FundraiserForm({
             parseFloat(formData.targetAmount) <= 0
         ) {
             newErrors.targetAmount = "Target amount must be a positive number";
-        }
-
-        if (!formData.duration) {
-            newErrors.duration = "Duration is required";
-        } else if (
-            isNaN(parseInt(formData.duration)) ||
-            parseInt(formData.duration) <= 0
-        ) {
-            newErrors.duration = "Duration must be a positive number of days";
         }
 
         setErrors(newErrors);
@@ -167,7 +154,7 @@ export default function FundraiserForm({
                 contractAddress: FUND_ALLOCATION_ADDRESS,
             });
 
-            // Call the contract with updated parameters (removed durationInDays)
+            // Call the contract with the correct parameters
             const tx = await writeContract({
                 address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
                 abi: fundAllocationABI,
@@ -201,147 +188,94 @@ export default function FundraiserForm({
         }
     };
 
-    // Loading state during transaction confirmation
-    const isLoading = isSubmitting || isConfirming;
-
     return (
         <form
             onSubmit={handleSubmit}
             className="space-y-6">
-            {/* Success message */}
             {successMessage && (
                 <div className="bg-green-50 dark:bg-green-900 p-4 rounded-md">
-                    <div className="flex">
-                        <div className="flex-shrink-0">
-                            <svg
-                                className="h-5 w-5 text-green-400"
-                                fill="currentColor"
-                                viewBox="0 0 20 20">
-                                <path
-                                    fillRule="evenodd"
-                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                                    clipRule="evenodd"
-                                />
-                            </svg>
-                        </div>
-                        <div className="ml-3">
-                            <p className="text-sm font-medium text-green-800 dark:text-green-200">
-                                {successMessage}
-                            </p>
-                        </div>
-                    </div>
+                    <p className="text-green-800 dark:text-green-200">
+                        {successMessage}
+                    </p>
                 </div>
             )}
 
-            {/* Error message */}
             {errorMessage && (
                 <div className="bg-red-50 dark:bg-red-900 p-4 rounded-md">
-                    <div className="flex">
-                        <div className="flex-shrink-0">
-                            <svg
-                                className="h-5 w-5 text-red-400"
-                                fill="currentColor"
-                                viewBox="0 0 20 20">
-                                <path
-                                    fillRule="evenodd"
-                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                                    clipRule="evenodd"
-                                />
-                            </svg>
-                        </div>
-                        <div className="ml-3">
-                            <p className="text-sm font-medium text-red-800 dark:text-red-200">
-                                {errorMessage}
-                            </p>
-                        </div>
-                    </div>
+                    <p className="text-red-800 dark:text-red-200">
+                        {errorMessage}
+                    </p>
                 </div>
             )}
 
-            {/* Fundraiser Name */}
             <div>
                 <label
                     htmlFor="name"
                     className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Fundraiser Name
                 </label>
-                <div className="mt-1">
-                    <input
-                        type="text"
-                        name="name"
-                        id="name"
-                        value={formData.name}
-                        onChange={handleChange}
-                        className={`shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-md ${
-                            errors.name ? "border-red-300" : ""
-                        }`}
-                        placeholder="Community Garden Project"
-                        disabled={isLoading}
-                    />
-                    {errors.name && (
-                        <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                            {errors.name}
-                        </p>
-                    )}
-                </div>
+                <input
+                    type="text"
+                    id="name"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                        errors.name ? "border-red-500" : ""
+                    }`}
+                    placeholder="Enter fundraiser name"
+                    disabled={isSubmitting || isConfirming}
+                />
+                {errors.name && (
+                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                        {errors.name}
+                    </p>
+                )}
             </div>
 
-            {/* Description */}
             <div>
                 <label
                     htmlFor="description"
                     className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Description
                 </label>
-                <div className="mt-1">
-                    <textarea
-                        id="description"
-                        name="description"
-                        rows={4}
-                        value={formData.description}
-                        onChange={handleChange}
-                        className={`shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-md ${
-                            errors.description ? "border-red-300" : ""
-                        }`}
-                        placeholder="Describe your fundraiser and what you plan to do with the funds..."
-                        disabled={isLoading}
-                    />
-                    {errors.description && (
-                        <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                            {errors.description}
-                        </p>
-                    )}
-                </div>
+                <textarea
+                    id="description"
+                    name="description"
+                    rows={4}
+                    value={formData.description}
+                    onChange={handleChange}
+                    className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                        errors.description ? "border-red-500" : ""
+                    }`}
+                    placeholder="Describe your fundraiser"
+                    disabled={isSubmitting || isConfirming}
+                />
+                {errors.description && (
+                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                        {errors.description}
+                    </p>
+                )}
             </div>
 
-            {/* Target Amount */}
             <div>
                 <label
                     htmlFor="targetAmount"
                     className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Target Amount (ETH)
                 </label>
-                <div className="mt-1 relative rounded-md shadow-sm">
-                    <input
-                        type="number"
-                        name="targetAmount"
-                        id="targetAmount"
-                        value={formData.targetAmount}
-                        onChange={handleChange}
-                        step="0.01"
-                        min="0.01"
-                        className={`focus:ring-blue-500 focus:border-blue-500 block w-full pr-12 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-md ${
-                            errors.targetAmount ? "border-red-300" : ""
-                        }`}
-                        placeholder="1.00"
-                        disabled={isLoading}
-                    />
-                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                        <span className="text-gray-500 dark:text-gray-400 sm:text-sm">
-                            ETH
-                        </span>
-                    </div>
-                </div>
+                <input
+                    type="text"
+                    id="targetAmount"
+                    name="targetAmount"
+                    value={formData.targetAmount}
+                    onChange={handleChange}
+                    className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                        errors.targetAmount ? "border-red-500" : ""
+                    }`}
+                    placeholder="Enter target amount in ETH"
+                    disabled={isSubmitting || isConfirming}
+                />
                 {errors.targetAmount && (
                     <p className="mt-1 text-sm text-red-600 dark:text-red-400">
                         {errors.targetAmount}
@@ -349,102 +283,18 @@ export default function FundraiserForm({
                 )}
             </div>
 
-            {/* Duration */}
-            <div>
-                <label
-                    htmlFor="duration"
-                    className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Duration (Days)
-                </label>
-                <div className="mt-1 relative rounded-md shadow-sm">
-                    <input
-                        type="number"
-                        name="duration"
-                        id="duration"
-                        value={formData.duration}
-                        onChange={handleChange}
-                        min="1"
-                        max="365"
-                        step="1"
-                        className={`focus:ring-blue-500 focus:border-blue-500 block w-full pr-12 sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-md ${
-                            errors.duration ? "border-red-300" : ""
-                        }`}
-                        placeholder="30"
-                        disabled={isLoading}
-                    />
-                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                        <span className="text-gray-500 dark:text-gray-400 sm:text-sm">
-                            Days
-                        </span>
-                    </div>
-                </div>
-                {errors.duration && (
-                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                        {errors.duration}
-                    </p>
-                )}
-            </div>
-
-            {/* Submit Button */}
-            <div>
+            <div className="flex justify-end">
                 <button
                     type="submit"
-                    disabled={isLoading || isSuccess}
-                    className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white 
-            ${
-                isLoading || isSuccess
-                    ? "bg-blue-400 cursor-not-allowed"
-                    : "bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            }
-          `}>
-                    {isLoading ? (
-                        <>
-                            <svg
-                                className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24">
-                                <circle
-                                    className="opacity-25"
-                                    cx="12"
-                                    cy="12"
-                                    r="10"
-                                    stroke="currentColor"
-                                    strokeWidth="4"></circle>
-                                <path
-                                    className="opacity-75"
-                                    fill="currentColor"
-                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            {isConfirming
-                                ? "Confirming Transaction..."
-                                : "Creating Fundraiser..."}
-                        </>
-                    ) : isSuccess ? (
-                        "Fundraiser Created!"
-                    ) : (
-                        "Create Fundraiser"
-                    )}
+                    disabled={isSubmitting || isConfirming}
+                    className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {isSubmitting
+                        ? "Submitting..."
+                        : isConfirming
+                        ? "Confirming..."
+                        : "Create Fundraiser"}
                 </button>
             </div>
-
-            {/* Transaction Hash */}
-            {hash && (
-                <div className="mt-3 text-center">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Transaction Hash:
-                        <a
-                            href={`https://sepolia.etherscan.io/tx/${hash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="ml-1 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
-                            {`${hash.substring(0, 6)}...${hash.substring(
-                                hash.length - 4
-                            )}`}
-                        </a>
-                    </p>
-                </div>
-            )}
         </form>
     );
 }

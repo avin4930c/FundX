@@ -2,63 +2,95 @@
 
 import { useEffect, useState } from "react";
 import { formatEther } from "viem";
-import { useContractRead } from "wagmi";
+import { useContractRead, usePublicClient, useBlockNumber } from "wagmi";
 import { FUND_ALLOCATION_ADDRESS } from "../../../config/wagmi";
-import FundAllocationABI from "../../constants/FundAllocation.json";
+import { fundAllocationABI } from "@/contracts/abis";
 
 export const DashboardStats = () => {
     // Statistics state
     const [stats, setStats] = useState({
         totalFunds: "0",
         totalProjects: "0",
-        totalFundraisers: "0",
+        activeFundraisers: "0",
         successfulProjects: "0",
     });
 
+    const publicClient = usePublicClient();
+    const { data: blockNumber } = useBlockNumber({ watch: true });
+
     // Contract reads
-    const { data: totalFunds } = useContractRead({
+    const { data: totalFunds, refetch: refetchTotalFunds } = useContractRead({
         address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
-        abi: FundAllocationABI.abi,
+        abi: fundAllocationABI,
         functionName: "totalFunds",
-        watch: true,
     });
 
-    const { data: projectCount } = useContractRead({
-        address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
-        abi: FundAllocationABI.abi,
-        functionName: "getProjectCount",
-        watch: true,
-    });
+    const { data: fundraiserCount, refetch: refetchFundraiserCount } =
+        useContractRead({
+            address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
+            abi: fundAllocationABI,
+            functionName: "getFundraiserCount",
+        });
 
-    const { data: fundraiserCount } = useContractRead({
-        address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
-        abi: FundAllocationABI.abi,
-        functionName: "getFundraiserCount",
-        watch: true,
-    });
+    // Refresh data on new blocks
+    useEffect(() => {
+        refetchTotalFunds();
+        refetchFundraiserCount();
+    }, [blockNumber, refetchTotalFunds, refetchFundraiserCount]);
 
     // Update stats when data changes
     useEffect(() => {
-        const newStats = {
-            totalFunds: totalFunds ? formatEther(totalFunds as bigint) : "0",
-            totalProjects: projectCount
-                ? (projectCount as bigint).toString()
-                : "0",
-            totalFundraisers: fundraiserCount
-                ? (fundraiserCount as bigint).toString()
-                : "0",
-            // This is a placeholder - in a real app, you'd query for completed projects
-            successfulProjects: "0",
+        const loadStats = async () => {
+            const newStats = {
+                totalFunds: totalFunds
+                    ? formatEther(totalFunds as bigint)
+                    : "0",
+                totalProjects: "0",
+                activeFundraisers: "0",
+                successfulProjects: "0",
+            };
+
+            if (fundraiserCount && publicClient) {
+                const count = Number(fundraiserCount);
+                let activeCount = 0;
+                let successfulCount = 0;
+
+                // Fetch all fundraisers and count active ones
+                for (let i = 0; i < count; i++) {
+                    try {
+                        const result = await publicClient.readContract({
+                            address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
+                            abi: fundAllocationABI,
+                            functionName: "fundraisers",
+                            args: [BigInt(i)],
+                        });
+
+                        if (result) {
+                            const fundraiserData = result as any;
+                            const status = Number(fundraiserData.status || 0);
+                            if (status === 1) {
+                                // Active status
+                                activeCount++;
+                            } else if (status === 2) {
+                                // Funded status
+                                successfulCount++;
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`Error fetching fundraiser ${i}:`, error);
+                    }
+                }
+
+                newStats.totalProjects = count.toString();
+                newStats.activeFundraisers = activeCount.toString();
+                newStats.successfulProjects = successfulCount.toString();
+            }
+
+            setStats(newStats);
         };
 
-        // For demo purposes, set a placeholder for successful projects
-        if (projectCount) {
-            const total = Number(projectCount);
-            newStats.successfulProjects = Math.floor(total * 0.6).toString(); // Assume 60% success rate
-        }
-
-        setStats(newStats);
-    }, [totalFunds, projectCount, fundraiserCount]);
+        loadStats();
+    }, [totalFunds, fundraiserCount, publicClient]);
 
     return (
         <div>
@@ -176,7 +208,7 @@ export const DashboardStats = () => {
                     </dt>
                     <dd className="ml-16 flex items-baseline">
                         <p className="text-2xl font-semibold text-gray-900 dark:text-white">
-                            {stats.totalFundraisers}
+                            {stats.activeFundraisers}
                         </p>
                     </dd>
                 </div>

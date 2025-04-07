@@ -9,19 +9,20 @@ import {
     useWaitForTransactionReceipt,
     usePublicClient,
 } from "wagmi";
-import { formatEther, parseEther } from "viem";
+import { formatEther, parseEther, isAddress } from "viem";
 import { FUND_ALLOCATION_ADDRESS } from "../../../config/wagmi";
 import { fundAllocationABI } from "@/contracts/abis";
 
+// Updated Fundraiser type to match the contract structure
 type Fundraiser = {
-    id: number;
+    id: string;
     name: string;
     description: string;
     creator: string;
-    targetAmount: bigint;
-    currentAmount: bigint;
-    deadline: bigint;
-    active: boolean;
+    targetAmount: string;
+    currentAmount: string;
+    status: number; // Using the enum value from the contract
+    active: boolean; // Derived from status
     progress: number;
     timeLeft: string;
 };
@@ -30,10 +31,14 @@ export const ActiveFundraisers = () => {
     const { isConnected } = useAccount();
     const [fundraisers, setFundraisers] = useState<Fundraiser[]>([]);
     const [donationAmounts, setDonationAmounts] = useState<{
-        [key: number]: string;
+        [key: string]: string;
     }>({});
     const [isLoading, setIsLoading] = useState(true);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
+    const [error, setError] = useState<string | null>(null);
+
+    // Validate contract address
+    const isValidContractAddress = isAddress(FUND_ALLOCATION_ADDRESS);
 
     // Get fundraiser count - adding watch to update when new fundraisers are created
     const { data: fundraiserCount, refetch: refetchFundraiserCount } =
@@ -46,7 +51,7 @@ export const ActiveFundraisers = () => {
                 },
             ],
             query: {
-                enabled: true,
+                enabled: isValidContractAddress, // Only enable if address is valid
                 refetchInterval: 10000, // Refetch every 10 seconds
             },
         });
@@ -70,7 +75,7 @@ export const ActiveFundraisers = () => {
     }, [isDonationSuccess, donationHash, refetchFundraiserCount]);
 
     // Update donation amount for a specific fundraiser
-    const handleDonationChange = (id: number, value: string) => {
+    const handleDonationChange = (id: string, value: string) => {
         setDonationAmounts((prev) => ({
             ...prev,
             [id]: value,
@@ -78,19 +83,21 @@ export const ActiveFundraisers = () => {
     };
 
     // Calculate time remaining helper function
-    const getTimeRemaining = (deadline: bigint) => {
-        const now = BigInt(Math.floor(Date.now() / 1000));
-        if (deadline <= now) return "Ended";
+    const getTimeRemaining = () => {
+        // Since we don't have a deadline in the contract, we'll use a default of 30 days
+        const now = new Date();
+        const futureDate = new Date(now);
+        futureDate.setDate(futureDate.getDate() + 30);
 
-        const diff = Number(deadline - now);
-        const days = Math.floor(diff / 86400);
+        const diff = futureDate.getTime() - now.getTime();
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
         if (days > 0) return `${days} day${days > 1 ? "s" : ""} left`;
 
-        const hours = Math.floor(diff / 3600);
+        const hours = Math.floor(diff / (1000 * 60 * 60));
         if (hours > 0) return `${hours} hour${hours > 1 ? "s" : ""} left`;
 
-        const minutes = Math.floor(diff / 60);
+        const minutes = Math.floor(diff / (1000 * 60));
         return `${minutes} minute${minutes > 1 ? "s" : ""} left`;
     };
 
@@ -110,278 +117,169 @@ export const ActiveFundraisers = () => {
     const publicClient = usePublicClient();
 
     // Handle donation submission
-    const handleDonate = async (id: number) => {
+    const handleDonate = async (id: string) => {
+        if (!isConnected) {
+            alert("Please connect your wallet to donate");
+            return;
+        }
+
+        if (!isValidContractAddress) {
+            alert(
+                "Contract address is not valid. Please check your environment variables."
+            );
+            return;
+        }
+
         const amount = donationAmounts[id];
-        if (!amount || parseFloat(amount) <= 0) {
+        if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
             alert("Please enter a valid donation amount");
             return;
         }
 
         try {
-            console.log(`Donating ${amount} ETH to fundraiser #${id}`);
+            // Convert ETH amount to Wei
+            const amountInWei = parseEther(amount);
 
-            // Format contract address for console display
-            const contractAddressDisplay = FUND_ALLOCATION_ADDRESS
-                ? `${FUND_ALLOCATION_ADDRESS.substring(
-                      0,
-                      6
-                  )}...${FUND_ALLOCATION_ADDRESS.substring(
-                      FUND_ALLOCATION_ADDRESS.length - 4
-                  )}`
-                : "Not set";
-
-            console.log(`Contract address: ${contractAddressDisplay}`);
-            console.log(`Using function: donate with args: [${id}]`);
-
-            // Check if contract address is valid
-            if (!FUND_ALLOCATION_ADDRESS || FUND_ALLOCATION_ADDRESS === "") {
-                throw new Error(
-                    "Contract address is not configured. Please check your environment variables."
-                );
-            }
-
-            // For testing: Log contract address and function call details
-            console.log("Full details:", {
-                address: FUND_ALLOCATION_ADDRESS,
-                functionName: "donate",
-                args: [BigInt(id)],
-                value: parseEther(amount).toString(),
-            });
-
-            // Call the contract
-            await writeContract({
+            // Call the contract's donate function
+            const tx = await writeContract({
                 address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
                 abi: fundAllocationABI,
                 functionName: "donate",
                 args: [BigInt(id)],
-                value: parseEther(amount),
+                value: amountInWei,
             });
 
-            // Show success message to user
-            alert("Transaction submitted! Please confirm in your wallet.");
-            console.log("Transaction submitted successfully");
+            console.log("Donation transaction submitted:", tx);
         } catch (error) {
-            console.error("Error making donation:", error);
-            const errorMessage =
-                error instanceof Error ? error.message : String(error);
-            console.error("Detailed error:", errorMessage);
-
-            // Give user a more helpful error message
-            if (errorMessage.includes("user rejected")) {
-                alert("Transaction was rejected in your wallet.");
-            } else if (errorMessage.includes("insufficient funds")) {
-                alert(
-                    "You don't have enough ETH in your wallet for this donation."
-                );
-            } else {
-                alert(`Donation failed: ${errorMessage}`);
-            }
+            console.error("Error donating:", error);
+            alert("Failed to submit donation. Please try again.");
         }
     };
 
-    // Load real fundraiser data from the blockchain
+    // Load fundraisers from the blockchain
     useEffect(() => {
-        const loadFundraisers = async () => {
+        const fetchFundraisers = async () => {
+            if (!publicClient || !fundraiserCount) return;
+
             setIsLoading(true);
-            console.log(
-                "Starting to load fundraisers, refreshTrigger:",
-                refreshTrigger
-            );
+            setError("");
 
             try {
-                // First check if fundraiserCount is available
-                if (!fundraiserCount) {
-                    console.log("Waiting for fundraiser count data...");
-                    setIsLoading(false);
-                    return;
-                }
+                const count = Number(fundraiserCount);
+                console.log("Total fundraiser count:", count);
 
-                // Then check if we have a valid result
-                if (!fundraiserCount[0]?.result) {
-                    console.log("No fundraiser count result available");
-                    setIsLoading(false);
-                    return;
-                }
-
-                const count = Number(fundraiserCount[0].result);
-                console.log("Fundraiser count from contract:", count);
-
-                // If no fundraisers yet, set empty array and stop loading
-                if (count === 0) {
-                    console.log("No fundraisers found");
-                    setFundraisers([]);
-                    setIsLoading(false);
-                    return;
-                }
-
-                // Check if public client is available
-                if (!publicClient) {
-                    console.error("Public client not available");
-                    setIsLoading(false);
-                    return;
-                }
-
-                // Function to fetch actual fundraiser details from the contract
-                const fetchFundraiserDetails = async (
-                    id: number
-                ): Promise<Fundraiser | null> => {
-                    try {
-                        console.log(`Fetching fundraiser data for ID: ${id}`);
-
-                        // Call contract to get fundraiser data using publicClient
-                        const result = await publicClient.readContract({
-                            address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
-                            abi: fundAllocationABI,
-                            functionName: "fundraisers",
-                            args: [BigInt(id)],
-                        });
-
-                        console.log(`Fundraiser ${id} raw data:`, result);
-
-                        if (result) {
-                            try {
-                                // The contract returns a struct with these fields:
-                                // id, name, description, goal, raised, creator, status
-                                const fundraiserData = result as any;
-
-                                if (!fundraiserData) {
-                                    console.error(
-                                        `Fundraiser ${id} data has incorrect format`
-                                    );
-                                    return null;
-                                }
-
-                                // Extract data
-                                const name =
-                                    fundraiserData.name || `Fundraiser #${id}`;
-                                const description =
-                                    fundraiserData.description ||
-                                    "No description available";
-                                const creator =
-                                    fundraiserData.creator ||
-                                    "0x0000000000000000000000000000000000000000";
-                                const targetAmount = BigInt(
-                                    fundraiserData.goal?.toString() || "0"
-                                );
-                                const currentAmount = BigInt(
-                                    fundraiserData.raised?.toString() || "0"
-                                );
-
-                                // Since we don't have deadline in the new structure, use a default (30 days from now)
-                                const now = BigInt(
-                                    Math.floor(Date.now() / 1000)
-                                );
-                                const deadline =
-                                    now + BigInt(30 * 24 * 60 * 60); // 30 days from now
-
-                                // Check status - 1 is Active in our enum
-                                const active = fundraiserData.status === 1;
-
-                                // Calculate progress percentage
-                                const progress = calculateProgress(
-                                    currentAmount,
-                                    targetAmount
-                                );
-
-                                // Calculate time remaining (using our default deadline)
-                                const timeLeft = getTimeRemaining(deadline);
-
-                                const fundraiser: Fundraiser = {
-                                    id,
-                                    name,
-                                    description,
-                                    creator,
-                                    targetAmount,
-                                    currentAmount,
-                                    deadline,
-                                    active,
-                                    progress,
-                                    timeLeft,
-                                };
-
-                                console.log(`Fundraiser ${id} processed:`, {
-                                    id,
-                                    name,
-                                    progress,
-                                    active,
-                                    currentAmount: currentAmount.toString(),
-                                    targetAmount: targetAmount.toString(),
-                                });
-
-                                return fundraiser;
-                            } catch (parseError) {
-                                console.error(
-                                    `Error parsing fundraiser ${id} data:`,
-                                    parseError
-                                );
-                                return null;
-                            }
-                        }
-                        console.log(`Fundraiser ${id} data not found`);
-                        return null;
-                    } catch (error) {
-                        console.error(
-                            `Error fetching fundraiser ${id}:`,
-                            error
-                        );
-                        return null;
-                    }
-                };
-
-                // Fetch all fundraisers in parallel
                 const promises = [];
                 for (let i = 0; i < count; i++) {
-                    promises.push(fetchFundraiserDetails(i));
+                    promises.push(fetchFundraiserDetails(BigInt(i)));
                 }
 
-                // Wait for all fundraisers to be fetched
-                const fetchedFundraisers = await Promise.all(promises);
-                console.log(
-                    "All fundraisers fetched:",
-                    fetchedFundraisers.length
+                const results = await Promise.all(promises);
+                const validFundraisers = results.filter(
+                    (f): f is Fundraiser => f !== null
                 );
 
-                // Filter out any null results and only include active fundraisers
-                const validFundraisers = fetchedFundraisers.filter(
-                    (f): f is Fundraiser => f !== null && f.active
-                );
+                console.log("Valid active fundraisers:", validFundraisers);
 
-                console.log(
-                    "Valid active fundraisers:",
-                    validFundraisers.length
-                );
-
-                // Initialize donation amounts
-                const initialDonationAmounts: { [key: number]: string } = {};
-                validFundraisers.forEach((f) => {
-                    initialDonationAmounts[f.id] = "0.1"; // Default donation amount
-                });
-
-                setDonationAmounts(initialDonationAmounts);
                 setFundraisers(validFundraisers);
+                const initialDonationAmounts = Object.fromEntries(
+                    validFundraisers.map((f) => [f.id, ""])
+                );
+                setDonationAmounts(initialDonationAmounts);
             } catch (error) {
-                console.error("Error in loadFundraisers:", error);
+                console.error("Error fetching fundraisers:", error);
+                setError("Failed to fetch fundraisers");
             } finally {
                 setIsLoading(false);
             }
         };
 
-        loadFundraisers();
+        fetchFundraisers();
 
-        // Set up an interval to refresh fundraisers regularly
+        // Set up auto-refresh
         const intervalId = setInterval(() => {
-            console.log("Auto-refreshing fundraisers data");
             setRefreshTrigger((prev) => prev + 1);
-        }, 30000); // Every 30 seconds
+        }, 30000); // Refresh every 30 seconds
 
-        // Clean up interval on component unmount
         return () => clearInterval(intervalId);
-    }, [fundraiserCount, refreshTrigger, publicClient]);
+    }, [publicClient, fundraiserCount, refreshTrigger]);
+
+    const fetchFundraiserDetails = async (id: bigint) => {
+        if (!publicClient) return null;
+
+        try {
+            const result = await publicClient.readContract({
+                address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
+                abi: fundAllocationABI,
+                functionName: "fundraisers",
+                args: [id],
+            });
+
+            if (!result) return null;
+
+            const fundraiserData = result as any;
+            const status = Number(fundraiserData.status || 0);
+            const isActive = status === 1; // 1 represents Active status
+
+            // Parse amounts as BigInt to handle them correctly
+            const targetAmount = fundraiserData.goal
+                ? BigInt(fundraiserData.goal)
+                : BigInt(0);
+            const currentAmount = fundraiserData.raised
+                ? BigInt(fundraiserData.raised)
+                : BigInt(0);
+
+            console.log("Fundraiser details:", {
+                id: id.toString(),
+                name: fundraiserData.name,
+                targetAmount: targetAmount.toString(),
+                currentAmount: currentAmount.toString(),
+                status,
+            });
+
+            if (!isActive) {
+                console.log(
+                    `Fundraiser ${id} is not active, status: ${status}`
+                );
+                return null;
+            }
+
+            const progress = calculateProgress(currentAmount, targetAmount);
+
+            return {
+                id: id.toString(),
+                name: fundraiserData.name || "",
+                description: fundraiserData.description || "",
+                creator: fundraiserData.creator || "",
+                targetAmount: formatEther(targetAmount),
+                currentAmount: formatEther(currentAmount),
+                status,
+                active: isActive,
+                progress,
+                timeLeft: "N/A", // Time left is not tracked in the contract
+            } as Fundraiser;
+        } catch (error) {
+            console.error(`Error fetching fundraiser ${id}:`, error);
+            return null;
+        }
+    };
 
     if (isLoading) {
         return (
             <div className="flex justify-center py-20">
                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="text-center py-10">
+                <h3 className="text-xl font-medium text-red-600 dark:text-red-400">
+                    {error}
+                </h3>
+                <p className="mt-2 text-gray-600 dark:text-gray-400">
+                    Please check your environment variables and try again.
+                </p>
             </div>
         );
     }
@@ -451,11 +349,10 @@ export const ActiveFundraisers = () => {
 
                         <div className="mt-2 flex justify-between text-sm">
                             <span className="text-gray-500 dark:text-gray-400">
-                                Raised: {formatEther(fundraiser.currentAmount)}{" "}
-                                ETH
+                                Raised: {fundraiser.currentAmount} ETH
                             </span>
                             <span className="text-gray-700 dark:text-gray-300">
-                                Goal: {formatEther(fundraiser.targetAmount)} ETH
+                                Goal: {fundraiser.targetAmount} ETH
                             </span>
                         </div>
 
@@ -474,15 +371,19 @@ export const ActiveFundraisers = () => {
                                     }
                                     className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-md p-2"
                                     placeholder="ETH amount"
-                                    disabled={!isConnected}
+                                    disabled={
+                                        !isConnected || !isValidContractAddress
+                                    }
                                 />
                             </div>
                             <button
                                 onClick={() => handleDonate(fundraiser.id)}
-                                disabled={!isConnected}
+                                disabled={
+                                    !isConnected || !isValidContractAddress
+                                }
                                 className={`ml-3 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white 
                   ${
-                      isConnected
+                      isConnected && isValidContractAddress
                           ? "bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                           : "bg-gray-400 cursor-not-allowed"
                   }`}>
