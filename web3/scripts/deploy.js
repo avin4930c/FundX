@@ -1,5 +1,8 @@
 // Modify this file: web3/scripts/deploy.js
 const { ethers } = require("hardhat");
+const fs = require("fs");
+const path = require("path");
+const { spawn } = require("child_process");
 
 async function main() {
     console.log("Starting deployment process...");
@@ -7,101 +10,16 @@ async function main() {
     // Get the contract factory
     const FundAllocation = await ethers.getContractFactory("FundAllocation");
 
-    // Get signers for multisig setup
-    const [deployer, owner2, owner3] = await ethers.getSigners();
-
-    // Set up multisig owners (first 3 accounts)
-    const owners = [deployer.address, owner2.address, owner3.address];
-
-    // Required confirmations for multisig
-    const requiredConfirmations = 2;
-
     console.log("Deploying FundAllocation contract...");
-    const fundAllocation = await FundAllocation.deploy(
-        owners,
-        requiredConfirmations
-    );
+    const fundAllocation = await FundAllocation.deploy();
 
     // Wait for deployment to complete
     await fundAllocation.waitForDeployment();
 
     const contractAddress = await fundAllocation.getAddress();
     console.log(`FundAllocation deployed to: ${contractAddress}`);
-    console.log(`Multi-sig owners: ${owners}`);
-    console.log(`Required confirmations: ${requiredConfirmations}`);
-
-    // Seed the contract with initial fundraisers
-    console.log("\nSeeding contract with initial fundraisers...");
-
-    const fundraisers = [
-        {
-            name: "Clean Water Initiative",
-            description: "Providing clean water access to rural communities",
-            goal: ethers.parseEther("5"),
-        },
-        {
-            name: "Education for All",
-            description:
-                "Supporting education in underprivileged communities with supplies",
-            goal: ethers.parseEther("3"),
-        },
-        {
-            name: "Healthcare Outreach",
-            description:
-                "Mobile clinics for remote villages without hospital access",
-            goal: ethers.parseEther("10"),
-        },
-        {
-            name: "Renewable Energy Project",
-            description: "Installing solar panels in off-grid communities",
-            goal: ethers.parseEther("8"),
-        },
-        {
-            name: "Food Security Program",
-            description:
-                "Supporting local farmers and distributing food to families in need",
-            goal: ethers.parseEther("4"),
-        },
-    ];
-
-    // Create all fundraisers
-    for (const f of fundraisers) {
-        console.log(`Creating fundraiser: ${f.name}`);
-        const tx = await fundAllocation.createFundraiser(
-            f.name,
-            f.description,
-            f.goal
-        );
-        await tx.wait();
-    }
-
-    // Get fundraiser count to verify
-    const count = await fundAllocation.getFundraiserCount();
-    console.log(`\nTotal fundraisers created: ${count}`);
-
-    // Add some sample donations
-    console.log("\nMaking sample donations...");
-
-    // Donate to first fundraiser
-    await fundAllocation.donate(0, { value: ethers.parseEther("2.5") });
-    console.log("Donated 2.5 ETH to fundraiser #0");
-
-    // Donate to second fundraiser
-    await fundAllocation.donate(1, { value: ethers.parseEther("1.5") });
-    console.log("Donated 1.5 ETH to fundraiser #1");
-
-    // Create a withdrawal request
-    console.log("\nCreating withdrawal request...");
-    await fundAllocation.createWithdrawalRequest(
-        0,
-        "For water purification equipment",
-        ethers.parseEther("1")
-    );
-    console.log("Created withdrawal request for fundraiser #0");
 
     // Update the .env file programmatically
-    const fs = require("fs");
-    const path = require("path");
     const envPath = path.join(__dirname, "../../webclient/.env");
 
     try {
@@ -123,7 +41,25 @@ async function main() {
         console.error("Error updating .env file:", err);
     }
 
-    console.log("\nDeployment and setup complete!");
+    console.log("\nDeployment complete! The contract is ready for use.");
+
+    // Copy contract artifacts to frontend
+    console.log("\nCopying contract artifacts to frontend...");
+    const copyArtifacts = spawn("node", ["scripts/copy-artifacts.js"], {
+        stdio: "inherit",
+        shell: true,
+    });
+
+    copyArtifacts.on("close", (code) => {
+        if (code === 0) {
+            console.log("Successfully copied contract artifacts to frontend!");
+            console.log(
+                "You can now create fundraisers through the application."
+            );
+        } else {
+            console.error("Failed to copy contract artifacts to frontend.");
+        }
+    });
 }
 
 main()

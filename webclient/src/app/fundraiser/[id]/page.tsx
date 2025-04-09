@@ -7,8 +7,9 @@ import { formatEther } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import Header from "@/components/Layout/Header";
-import { FUND_ALLOCATION_ADDRESS } from "../../../../config/wagmi";
+import { FUND_ALLOCATION_ADDRESS } from "@/lib/constants";
 import { fundAllocationABI } from "@/contracts/abis";
+import { MilestoneList } from "@/components/Dashboard/MilestoneList";
 
 // Updated Fundraiser type to match the contract structure
 type Fundraiser = {
@@ -22,6 +23,7 @@ type Fundraiser = {
     active: boolean; // Derived from status
     progress: number;
     timeLeft: string;
+    milestoneCount: number;
 };
 
 export default function FundraiserDetailsPage() {
@@ -81,75 +83,67 @@ export default function FundraiserDetailsPage() {
                 setLoading(true);
 
                 // Call contract to get fundraiser data using publicClient
-                const result = await publicClient.readContract({
+                const fundraiserData = await publicClient.readContract({
                     address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
                     abi: fundAllocationABI,
                     functionName: "fundraisers",
                     args: [BigInt(id)],
                 });
 
-                if (result) {
-                    try {
-                        // Extract fundraiser data from result
-                        const fundraiserData = result as any;
-
-                        if (!fundraiserData) {
-                            throw new Error("Invalid fundraiser data format");
-                        }
-
-                        // Extract data
-                        const name = fundraiserData.name || `Fundraiser #${id}`;
-                        const description =
-                            fundraiserData.description ||
-                            "No description available";
-                        const creator =
-                            fundraiserData.creator ||
-                            "0x0000000000000000000000000000000000000000";
-                        const targetAmount = BigInt(
-                            fundraiserData.goal?.toString() || "0"
-                        );
-                        const currentAmount = BigInt(
-                            fundraiserData.raised?.toString() || "0"
-                        );
-                        const status = Number(fundraiserData.status || 0);
-
-                        // Check status - 1 is Active in our enum
-                        const active = status === 1;
-
-                        // Calculate progress percentage
-                        const progress = calculateProgress(
-                            currentAmount,
-                            targetAmount
-                        );
-
-                        // Calculate time remaining (using default)
-                        const timeLeft = getTimeRemaining();
-
-                        const fundraiser: Fundraiser = {
-                            id,
-                            name,
-                            description,
-                            creator,
-                            targetAmount,
-                            currentAmount,
-                            status,
-                            active,
-                            progress,
-                            timeLeft,
-                        };
-
-                        setFundraiser(fundraiser);
-                        setError(null);
-                    } catch (parseError) {
-                        console.error(
-                            "Error parsing fundraiser data:",
-                            parseError
-                        );
-                        setError("Failed to parse fundraiser data");
-                    }
-                } else {
-                    setError("Fundraiser not found");
+                if (!fundraiserData) {
+                    throw new Error("Fundraiser not found");
                 }
+
+                console.log("Raw fundraiser data:", fundraiserData);
+
+                // Extract the data from the array (based on contract structure)
+                const data = fundraiserData as any[];
+
+                // Indexes from the contract:
+                // [0] = id
+                // [1] = creator address
+                // [2] = name
+                // [3] = description
+                // [4] = goal amount
+                // [5] = raised amount
+                // [6] = active status
+                // [7] = fundraiser status
+                // [8] = milestone count
+
+                const name = data[2] || `Fundraiser #${id}`;
+                const description = data[3] || "No description available";
+                const creator =
+                    data[1] || "0x0000000000000000000000000000000000000000";
+                const targetAmount = data[4] || BigInt(0);
+                const currentAmount = data[5] || BigInt(0);
+                const status = Number(data[7] || 0);
+                const milestoneCount = Number(data[8] || 0);
+
+                // Check status - 1 is Active in our enum
+                const active = status === 1;
+
+                // Calculate progress percentage
+                const progress = calculateProgress(currentAmount, targetAmount);
+
+                // Calculate time remaining (using default)
+                const timeLeft = getTimeRemaining();
+
+                const fundraiserObj: Fundraiser = {
+                    id,
+                    name,
+                    description,
+                    creator,
+                    targetAmount,
+                    currentAmount,
+                    status,
+                    active,
+                    progress,
+                    timeLeft,
+                    milestoneCount,
+                };
+
+                setFundraiser(fundraiserObj);
+                setError(null);
             } catch (error) {
                 console.error("Error fetching fundraiser:", error);
                 setError("Failed to load fundraiser details");
@@ -216,7 +210,8 @@ export default function FundraiserDetailsPage() {
             />
 
             <main className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
-                <div className="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg">
+                {/* Fundraiser Details Section */}
+                <div className="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg mb-8">
                     <div className="px-4 py-5 sm:p-6">
                         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                             {/* Fundraiser Image (placeholder) */}
@@ -355,6 +350,21 @@ export default function FundraiserDetailsPage() {
                         </div>
                     </div>
                 </div>
+
+                {/* Fund Requests Section */}
+                {fundraiser.milestoneCount > 0 && (
+                    <div className="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg mt-8">
+                        <div className="px-4 py-5 sm:p-6">
+                            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+                                Fund Requests
+                            </h2>
+                            <MilestoneList
+                                fundraiserId={BigInt(fundraiser.id)}
+                                milestoneCount={fundraiser.milestoneCount}
+                            />
+                        </div>
+                    </div>
+                )}
             </main>
         </div>
     );

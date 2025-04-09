@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { formatEther } from "viem";
 import { useContractRead, usePublicClient, useBlockNumber } from "wagmi";
-import { FUND_ALLOCATION_ADDRESS } from "../../../config/wagmi";
+import { FUND_ALLOCATION_ADDRESS } from "@/lib/constants";
 import { fundAllocationABI } from "@/contracts/abis";
+import { useFundraiserContext } from "@/contexts/FundraiserContext";
 
 export const DashboardStats = () => {
     // Statistics state
@@ -15,8 +16,12 @@ export const DashboardStats = () => {
         successfulProjects: "0",
     });
 
+    // Use refs to store previous values to avoid unnecessary re-renders
+    const prevStatsRef = useRef(stats);
+
     const publicClient = usePublicClient();
     const { data: blockNumber } = useBlockNumber({ watch: true });
+    const { fundraiserData, loading, error } = useFundraiserContext();
 
     // Contract reads
     const { data: totalFunds, refetch: refetchTotalFunds } = useContractRead({
@@ -32,73 +37,74 @@ export const DashboardStats = () => {
             functionName: "getFundraiserCount",
         });
 
-    // Refresh data on new blocks
+    // Refresh data on new blocks - with less frequent updates
     useEffect(() => {
-        refetchTotalFunds();
-        refetchFundraiserCount();
-    }, [blockNumber, refetchTotalFunds, refetchFundraiserCount]);
+        if (!blockNumber) return;
 
-    // Update stats when data changes
-    useEffect(() => {
-        const loadStats = async () => {
-            const newStats = {
-                totalFunds: totalFunds
-                    ? formatEther(totalFunds as bigint)
-                    : "0",
-                totalProjects: "0",
-                activeFundraisers: "0",
-                successfulProjects: "0",
-            };
-
-            if (fundraiserCount && publicClient) {
-                const count = Number(fundraiserCount);
-                let activeCount = 0;
-                let successfulCount = 0;
-
-                // Fetch all fundraisers and count active ones
-                for (let i = 0; i < count; i++) {
-                    try {
-                        const result = await publicClient.readContract({
-                            address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
-                            abi: fundAllocationABI,
-                            functionName: "fundraisers",
-                            args: [BigInt(i)],
-                        });
-
-                        if (result) {
-                            const fundraiserData = result as any;
-                            const status = Number(fundraiserData.status || 0);
-
-                            // Status 1 is Active, Status 2 is Funded in the contract's enum
-                            if (status === 1) {
-                                activeCount++;
-                            } else if (status === 2) {
-                                successfulCount++;
-                            }
-
-                            console.log(`Fundraiser ${i} status:`, status);
-                        }
-                    } catch (error) {
-                        console.error(`Error fetching fundraiser ${i}:`, error);
-                    }
-                }
-
-                console.log("Fundraiser counts:", {
-                    total: count,
-                    active: activeCount,
-                    successful: successfulCount,
-                });
-
-                newStats.totalProjects = count.toString();
-                newStats.activeFundraisers = activeCount.toString();
-                newStats.successfulProjects = successfulCount.toString();
-            }
-
-            setStats(newStats);
+        // Only refetch if block number changes significantly
+        // (to reduce update frequency)
+        const refetchData = () => {
+            refetchTotalFunds();
+            refetchFundraiserCount();
         };
 
-        loadStats();
-    }, [totalFunds, fundraiserCount, publicClient]);
+        refetchData();
+    }, [blockNumber, refetchTotalFunds, refetchFundraiserCount]);
+
+    // Calculate stats from fundraiser data - memoized to avoid recalculations
+    const derivedStats = useMemo(() => {
+        if (!fundraiserData || !totalFunds || !fundraiserCount) {
+            return null;
+        }
+
+        let activeCount = 0;
+        let successfulCount = 0;
+
+        if (fundraiserData && fundraiserData.length > 0) {
+            for (let i = 0; i < fundraiserData.length; i++) {
+                const fundraiser = fundraiserData[i];
+                if (!fundraiser) continue;
+
+                // Check active status at index 6
+                if (fundraiser[6] === true) {
+                    activeCount++;
+                }
+
+                // Check for successful projects (status === 1) at index 7
+                if (fundraiser[7] && Number(fundraiser[7]) === 1) {
+                    successfulCount++;
+                }
+            }
+        }
+
+        return {
+            totalFunds: totalFunds ? formatEther(totalFunds as bigint) : "0",
+            totalProjects: fundraiserCount
+                ? Number(fundraiserCount).toString()
+                : "0",
+            activeFundraisers: activeCount.toString(),
+            successfulProjects: successfulCount.toString(),
+        };
+    }, [totalFunds, fundraiserCount, fundraiserData]);
+
+    // Update state only when derived values change and skip if data isn't loaded yet
+    useEffect(() => {
+        if (!derivedStats) return;
+
+        // Check if the values actually changed to avoid unnecessary state updates
+        const hasChanged =
+            derivedStats.totalFunds !== prevStatsRef.current.totalFunds ||
+            derivedStats.totalProjects !== prevStatsRef.current.totalProjects ||
+            derivedStats.activeFundraisers !==
+                prevStatsRef.current.activeFundraisers ||
+            derivedStats.successfulProjects !==
+                prevStatsRef.current.successfulProjects;
+
+        if (hasChanged) {
+            prevStatsRef.current = derivedStats;
+            setStats(derivedStats);
+        }
+    }, [derivedStats]);
 
     return (
         <div>

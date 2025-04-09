@@ -30,6 +30,25 @@ export const fundAllocationABI = [
       {
         "indexed": true,
         "internalType": "uint256",
+        "name": "fundraiserId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "milestoneIndex",
+        "type": "uint256"
+      }
+    ],
+    "name": "FundWithdrawalRequested",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
         "name": "id",
         "type": "uint256"
       },
@@ -125,6 +144,12 @@ export const fundAllocationABI = [
         "internalType": "uint256",
         "name": "amount",
         "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "bool",
+        "name": "requiresProof",
+        "type": "bool"
       }
     ],
     "name": "MilestoneCreated",
@@ -148,7 +173,7 @@ export const fundAllocationABI = [
       {
         "indexed": false,
         "internalType": "address",
-        "name": "voter",
+        "name": "validator",
         "type": "address"
       },
       {
@@ -187,6 +212,25 @@ export const fundAllocationABI = [
     "type": "event"
   },
   {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "fundraiserId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "address",
+        "name": "validator",
+        "type": "address"
+      }
+    ],
+    "name": "ValidatorAdded",
+    "type": "event"
+  },
+  {
     "inputs": [
       {
         "internalType": "uint256",
@@ -202,9 +246,32 @@ export const fundAllocationABI = [
         "internalType": "uint256",
         "name": "_amount",
         "type": "uint256"
+      },
+      {
+        "internalType": "bool",
+        "name": "_requiresProof",
+        "type": "bool"
       }
     ],
     "name": "addMilestone",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_fundraiserId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "_validator",
+        "type": "address"
+      }
+    ],
+    "name": "addValidator",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -305,6 +372,11 @@ export const fundAllocationABI = [
         "internalType": "uint256",
         "name": "currentMilestoneIndex",
         "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "validatorCount",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -396,6 +468,11 @@ export const fundAllocationABI = [
         "internalType": "uint256",
         "name": "currentMilestoneIndex",
         "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "validatorCount",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -447,6 +524,11 @@ export const fundAllocationABI = [
         "type": "bool"
       },
       {
+        "internalType": "bool",
+        "name": "requiresProof",
+        "type": "bool"
+      },
+      {
         "internalType": "uint256",
         "name": "yesVotes",
         "type": "uint256"
@@ -493,7 +575,7 @@ export const fundAllocationABI = [
       },
       {
         "internalType": "address",
-        "name": "_donor",
+        "name": "_validator",
         "type": "address"
       }
     ],
@@ -514,9 +596,46 @@ export const fundAllocationABI = [
         "internalType": "uint256",
         "name": "_fundraiserId",
         "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "_validator",
+        "type": "address"
+      }
+    ],
+    "name": "isValidator",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_fundraiserId",
+        "type": "uint256"
       }
     ],
     "name": "releaseMilestoneFunds",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_fundraiserId",
+        "type": "uint256"
+      }
+    ],
+    "name": "requestFundWithdrawal",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -552,7 +671,7 @@ export const fundAllocationABI = [
         "type": "bool"
       }
     ],
-    "name": "voteMilestone",
+    "name": "validateMilestone",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

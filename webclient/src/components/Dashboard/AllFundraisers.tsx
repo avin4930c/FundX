@@ -79,14 +79,19 @@ export const AllFundraisers = () => {
 
     // Calculate progress percentage
     const calculateProgress = (current: bigint, target: bigint): number => {
-        if (target === BigInt(0)) return 0;
+        if (!current || !target || target === BigInt(0)) return 0;
 
-        // Convert BigInt values to strings first, then to numbers to avoid precision issues
-        const currentNum = Number(current.toString());
-        const targetNum = Number(target.toString());
+        try {
+            // Convert BigInt values to strings first, then to numbers to avoid precision issues
+            const currentNum = Number(current.toString());
+            const targetNum = Number(target.toString());
 
-        // Calculate the percentage using regular number operations
-        return Math.floor((currentNum / targetNum) * 100);
+            // Calculate the percentage using regular number operations
+            return Math.floor((currentNum / targetNum) * 100);
+        } catch (error) {
+            console.error("Error calculating progress:", error);
+            return 0;
+        }
     };
 
     // Handle donation submission
@@ -183,46 +188,78 @@ export const AllFundraisers = () => {
 
                         if (result) {
                             try {
-                                const fundraiserData = result as any;
+                                // The result is an array with the fundraiser properties in order
+                                const fundraiserData = result as any[];
 
-                                if (!fundraiserData) {
+                                if (
+                                    !fundraiserData ||
+                                    !Array.isArray(fundraiserData)
+                                ) {
                                     console.error(
-                                        `Fundraiser ${id} data has incorrect format`
+                                        `Fundraiser ${id} data has incorrect format`,
+                                        fundraiserData
                                     );
                                     return null;
                                 }
+
+                                // Extract values from the array
+                                const [
+                                    creator,
+                                    title,
+                                    description,
+                                    targetAmount,
+                                    raisedAmount,
+                                    active,
+                                    milestoneCount,
+                                    currentMilestoneIndex,
+                                ] = fundraiserData;
 
                                 // Fetch milestones
                                 const milestones: Milestone[] = [];
                                 for (
                                     let i = 0;
-                                    i < Number(fundraiserData.milestoneCount);
+                                    i < Number(milestoneCount);
                                     i++
                                 ) {
-                                    const milestone =
-                                        (await publicClient.readContract({
-                                            address:
-                                                FUND_ALLOCATION_ADDRESS as `0x${string}`,
-                                            abi: fundAllocationABI,
-                                            functionName: "getMilestone",
-                                            args: [BigInt(id), BigInt(i)],
-                                        })) as any;
+                                    try {
+                                        const milestoneResult =
+                                            (await publicClient.readContract({
+                                                address:
+                                                    FUND_ALLOCATION_ADDRESS as `0x${string}`,
+                                                abi: fundAllocationABI,
+                                                functionName: "getMilestone",
+                                                args: [BigInt(id), BigInt(i)],
+                                            })) as any[];
 
-                                    milestones.push({
-                                        description: milestone[0],
-                                        amount: milestone[1],
-                                        proof: milestone[2],
-                                        proofSubmitted: milestone[3],
-                                        approved: milestone[4],
-                                        fundsReleased: milestone[5],
-                                        yesVotes: milestone[6],
-                                        noVotes: milestone[7],
-                                    });
+                                        if (
+                                            milestoneResult &&
+                                            Array.isArray(milestoneResult)
+                                        ) {
+                                            milestones.push({
+                                                description: milestoneResult[0],
+                                                amount: milestoneResult[1],
+                                                proof: milestoneResult[2],
+                                                proofSubmitted:
+                                                    milestoneResult[3],
+                                                approved: milestoneResult[4],
+                                                fundsReleased:
+                                                    milestoneResult[5],
+                                                yesVotes: milestoneResult[6],
+                                                noVotes: milestoneResult[7],
+                                            });
+                                        }
+                                    } catch (milestoneError) {
+                                        console.error(
+                                            `Error fetching milestone ${i} for fundraiser ${id}:`,
+                                            milestoneError
+                                        );
+                                    }
                                 }
 
+                                // Make sure targetAmount and raisedAmount are defined before calculating progress
                                 const progress = calculateProgress(
-                                    fundraiserData.raisedAmount,
-                                    fundraiserData.targetAmount
+                                    raisedAmount,
+                                    targetAmount
                                 );
 
                                 // Calculate time remaining (using default)
@@ -230,23 +267,19 @@ export const AllFundraisers = () => {
 
                                 const fundraiser: Fundraiser = {
                                     id,
-                                    title:
-                                        fundraiserData.title ||
-                                        `Fundraiser #${id}`,
+                                    title: title || `Fundraiser #${id}`,
                                     description:
-                                        fundraiserData.description ||
+                                        description ||
                                         "No description available",
                                     creator:
-                                        fundraiserData.creator ||
+                                        creator ||
                                         "0x0000000000000000000000000000000000000000",
-                                    targetAmount: fundraiserData.targetAmount,
-                                    raisedAmount: fundraiserData.raisedAmount,
-                                    active: fundraiserData.active || false,
-                                    milestoneCount: Number(
-                                        fundraiserData.milestoneCount
-                                    ),
+                                    targetAmount: targetAmount || BigInt(0),
+                                    raisedAmount: raisedAmount || BigInt(0),
+                                    active: active || false,
+                                    milestoneCount: Number(milestoneCount || 0),
                                     currentMilestoneIndex: Number(
-                                        fundraiserData.currentMilestoneIndex
+                                        currentMilestoneIndex || 0
                                     ),
                                     milestones,
                                     progress,
@@ -416,11 +449,11 @@ export const AllFundraisers = () => {
 
                         {/* Milestones */}
                         <div className="mt-6">
-                            <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                            <h4 className="font-semibold mb-2 text-gray-700 dark:text-gray-300">
                                 Milestones
                             </h4>
                             <MilestoneList
-                                fundraiserId={fundraiser.id}
+                                fundraiserId={BigInt(fundraiser.id)}
                                 milestoneCount={fundraiser.milestoneCount}
                             />
                         </div>

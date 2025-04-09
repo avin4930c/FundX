@@ -1,7 +1,7 @@
 import "@rainbow-me/rainbowkit/styles.css";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Providers } from "@/providers/providers";
+import ClientWrapper from "@/components/ClientWrapper";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -13,11 +13,11 @@ export default function RootLayout({
     return (
         <html lang="en">
             <body className={inter.className}>
-                <Providers>
+                <ClientWrapper>
                     <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
                         {children}
                     </div>
-                </Providers>
+                </ClientWrapper>
             </body>
         </html>
     );

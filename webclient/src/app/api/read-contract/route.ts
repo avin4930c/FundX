@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createPublicClient, http, parseAbi } from 'viem';
 import { hardhat } from 'viem/chains';
-import { FundAllocationABI } from '@/abi/FundAllocationABI';
+import { fundAllocationABI } from "@/contracts/abis";
 
 export async function GET(request: Request) {
     try {
@@ -58,7 +58,7 @@ export async function GET(request: Request) {
         console.log(`📋 API Call: ${functionName}(${JSON.stringify(args)}) at ${address}`);
         
         // Check if the function exists in the ABI
-        const functionExists = FundAllocationABI.some((item: any) => 
+        const functionExists = fundAllocationABI.some((item: any) => 
             item.type === 'function' && item.name === functionName
         );
         
@@ -66,7 +66,7 @@ export async function GET(request: Request) {
             console.error(`Function "${functionName}" not found in ABI`);
             return NextResponse.json({ 
                 error: `Function "${functionName}" not found in contract ABI`,
-                availableFunctions: FundAllocationABI
+                availableFunctions: fundAllocationABI
                     .filter((item: any) => item.type === 'function')
                     .map((item: any) => item.name)
             }, { status: 400 });
@@ -88,7 +88,7 @@ export async function GET(request: Request) {
         });
         
         // Log some ABI details for diagnostic purposes
-        console.log('ABI Function Details:', FundAllocationABI
+        console.log('ABI Function Details:', fundAllocationABI
             .filter((item: any) => item.type === 'function' && item.name === functionName)
         );
         
@@ -96,7 +96,7 @@ export async function GET(request: Request) {
         console.log('Calling contract function...');
         const result = await client.readContract({
             address: address as `0x${string}`,
-            abi: FundAllocationABI,
+            abi: fundAllocationABI,
             functionName,
             args,
         });

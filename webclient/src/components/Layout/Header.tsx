@@ -45,16 +45,19 @@ export default function Header({ pageTitle, showBackButton }: HeaderProps) {
         { name: "Explore", href: "/explore" },
         { name: "Create", href: "/create" },
         { name: "Fund Requests", href: "/fund-requests" },
-        { name: "Multi-Sig", href: "/multi-sig" },
+        // Removed Multi-Sig link as it doesn't have a corresponding page
+        // { name: "Multi-Sig", href: "/multi-sig" },
+        // Removed Debug link as it's a development tool
+        // { name: "Debug", href: "/debug" },
     ];
 
     return (
         <header
             className={`sticky top-0 z-50 ${
                 scrolled
-                    ? "bg-gray-900/95 backdrop-blur-sm"
-                    : "bg-gray-800 dark:bg-gray-900"
-            } shadow transition-all duration-300`}>
+                    ? "bg-gray-900/95 backdrop-blur-sm shadow-lg"
+                    : "bg-gradient-to-r from-gray-900 to-gray-800 dark:bg-gray-900"
+            } transition-all duration-300`}>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-between h-16">
                     <div className="flex items-center">
@@ -65,7 +68,9 @@ export default function Header({ pageTitle, showBackButton }: HeaderProps) {
                                 <span className="bg-gradient-to-r from-blue-500 to-purple-600 text-transparent bg-clip-text">
                                     Fund
                                 </span>
-                                <span className="text-white">X</span>
+                                <span className="text-white font-extrabold">
+                                    X
+                                </span>
                             </Link>
                         </div>
                         <div className="hidden md:block">
@@ -76,7 +81,7 @@ export default function Header({ pageTitle, showBackButton }: HeaderProps) {
                                         href={link.href}
                                         className={`${
                                             pathname === link.href
-                                                ? "bg-gray-900 text-white"
+                                                ? "bg-gray-700 text-white font-medium"
                                                 : "text-gray-300 hover:bg-gray-700 hover:text-white"
                                         } px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200`}>
                                         {link.name}

@@ -3,6 +3,7 @@ import { DashboardStats } from "../components/Dashboard/DashboardStats";
 import { ActiveFundraisers } from "../components/Dashboard/ActiveFundraisers";
 import { HeroSection } from "../components/Dashboard/HeroSection";
 import Header from "@/components/Layout/Header";
+import DebugPanel from "@/components/DebugPanel";
 
 export default function Page() {
     return (
@@ -12,6 +13,9 @@ export default function Page() {
             <main>
                 {/* Hero Section */}
                 <HeroSection />
+
+                {/* Debug panel to help diagnose contract state */}
+                <DebugPanel />
 
                 {/* Stats Section */}
                 <section className="py-12 bg-white dark:bg-gray-800">

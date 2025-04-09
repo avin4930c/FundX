@@ -10,8 +10,9 @@ import {
     usePublicClient,
 } from "wagmi";
 import { formatEther, parseEther, isAddress } from "viem";
-import { FUND_ALLOCATION_ADDRESS } from "../../../config/wagmi";
+import { FUND_ALLOCATION_ADDRESS } from "@/lib/constants";
 import { fundAllocationABI } from "@/contracts/abis";
+import { useFundraiserContext } from "@/contexts/FundraiserContext";
 
 // Updated Fundraiser type to match the contract structure
 type Fundraiser = {
@@ -33,9 +34,17 @@ export const ActiveFundraisers = () => {
     const [donationAmounts, setDonationAmounts] = useState<{
         [key: string]: string;
     }>({});
-    const [isLoading, setIsLoading] = useState(true);
-    const [refreshTrigger, setRefreshTrigger] = useState(0);
-    const [error, setError] = useState<string | null>(null);
+
+    // Use the context to get fundraiser data
+    const {
+        fundraiserData,
+        loading: contextLoading,
+        error: contextError,
+        refreshData,
+    } = useFundraiserContext();
+
+    const [isLoading, setIsLoading] = useState(contextLoading);
+    const [error, setError] = useState<string | null>(contextError);
 
     // Validate contract address
     const isValidContractAddress = isAddress(FUND_ALLOCATION_ADDRESS);
@@ -68,11 +77,10 @@ export const ActiveFundraisers = () => {
     useEffect(() => {
         if (isDonationSuccess && donationHash) {
             console.log("Donation confirmed, refreshing data...");
-            // Trigger refresh
-            setRefreshTrigger((prev) => prev + 1);
-            refetchFundraiserCount();
+            // Refresh the context data
+            refreshData();
         }
-    }, [isDonationSuccess, donationHash, refetchFundraiserCount]);
+    }, [isDonationSuccess, donationHash, refreshData]);
 
     // Update donation amount for a specific fundraiser
     const handleDonationChange = (id: string, value: string) => {
@@ -156,92 +164,79 @@ export const ActiveFundraisers = () => {
         }
     };
 
-    // Load fundraisers from the blockchain
+    // Load fundraisers from the context
     useEffect(() => {
-        const fetchFundraisers = async () => {
-            if (!publicClient || !fundraiserCount) return;
-
+        if (contextLoading) {
             setIsLoading(true);
-            setError("");
+            return;
+        }
 
-            try {
-                const count = Number(fundraiserCount);
-                console.log("Total fundraiser count:", count);
+        if (contextError) {
+            setError(contextError);
+            setIsLoading(false);
+            return;
+        }
 
-                const promises = [];
-                for (let i = 0; i < count; i++) {
-                    promises.push(fetchFundraiserDetails(BigInt(i)));
-                }
-
-                const results = await Promise.all(promises);
-                const validFundraisers = results.filter(
-                    (f): f is Fundraiser => f !== null
-                );
-
-                console.log("Valid active fundraisers:", validFundraisers);
-
-                setFundraisers(validFundraisers);
-                const initialDonationAmounts = Object.fromEntries(
-                    validFundraisers.map((f) => [f.id, ""])
-                );
-                setDonationAmounts(initialDonationAmounts);
-            } catch (error) {
-                console.error("Error fetching fundraisers:", error);
-                setError("Failed to fetch fundraisers");
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        fetchFundraisers();
-
-        // Set up auto-refresh
-        const intervalId = setInterval(() => {
-            setRefreshTrigger((prev) => prev + 1);
-        }, 30000); // Refresh every 30 seconds
-
-        return () => clearInterval(intervalId);
-    }, [publicClient, fundraiserCount, refreshTrigger]);
-
-    const fetchFundraiserDetails = async (id: bigint) => {
-        if (!publicClient) return null;
+        if (!fundraiserData) {
+            setIsLoading(false);
+            return;
+        }
 
         try {
-            const result = await publicClient.readContract({
-                address: FUND_ALLOCATION_ADDRESS as `0x${string}`,
-                abi: fundAllocationABI,
-                functionName: "fundraisers",
-                args: [id],
-            });
+            const validFundraisers = fundraiserData
+                .map((data, index) => {
+                    if (!data) return null;
 
-            if (!result) return null;
+                    const id = BigInt(index);
+                    return processFundraiserData(id, data);
+                })
+                .filter((f): f is Fundraiser => f !== null);
 
-            const fundraiserData = result as any;
-            const status = Number(fundraiserData.status || 0);
-            // Status 1 is Active in the contract's enum
-            const isActive = status === 1;
+            console.log("Valid active fundraisers:", validFundraisers);
 
-            // Parse amounts as BigInt to handle them correctly
-            const targetAmount = fundraiserData.goal
-                ? BigInt(fundraiserData.goal.toString())
+            setFundraisers(validFundraisers);
+            const initialDonationAmounts = Object.fromEntries(
+                validFundraisers.map((f) => [f.id, ""])
+            );
+            setDonationAmounts(initialDonationAmounts);
+        } catch (error) {
+            console.error("Error processing fundraisers:", error);
+            setError("Failed to process fundraisers");
+        } finally {
+            setIsLoading(false);
+        }
+    }, [fundraiserData, contextLoading, contextError]);
+
+    // Process fundraiser data from array format to Fundraiser object
+    const processFundraiserData = (
+        id: bigint,
+        fundraiserData: any
+    ): Fundraiser | null => {
+        try {
+            if (!fundraiserData) return null;
+
+            // Use array indices to access the values directly
+            // [0] = ID, [1] = creator, [2] = name, [3] = description,
+            // [4] = goal, [5] = raised, [6] = active, [7] = status, [8] = milestoneCount
+
+            const title = fundraiserData[2] || "";
+            const desc = fundraiserData[3] || "";
+            const creatorAddr = fundraiserData[1] || "";
+            const targetAmount = fundraiserData[4]
+                ? BigInt(fundraiserData[4].toString())
                 : BigInt(0);
-            const currentAmount = fundraiserData.raised
-                ? BigInt(fundraiserData.raised.toString())
+            const currentAmount = fundraiserData[5]
+                ? BigInt(fundraiserData[5].toString())
                 : BigInt(0);
-
-            console.log("Fundraiser details:", {
-                id: id.toString(),
-                name: fundraiserData.name,
-                targetAmount: targetAmount.toString(),
-                currentAmount: currentAmount.toString(),
-                status,
-                isActive,
-            });
+            const active = fundraiserData[6] === true;
+            const statusValue = fundraiserData[7]
+                ? Number(fundraiserData[7])
+                : 0;
 
             // Only return active fundraisers
-            if (!isActive) {
+            if (!active) {
                 console.log(
-                    `Fundraiser ${id} is not active, status: ${status}`
+                    `Fundraiser ${id} is not active, status: ${statusValue}`
                 );
                 return null;
             }
@@ -250,18 +245,18 @@ export const ActiveFundraisers = () => {
 
             return {
                 id: id.toString(),
-                name: fundraiserData.name || "",
-                description: fundraiserData.description || "",
-                creator: fundraiserData.creator || "",
+                name: title,
+                description: desc,
+                creator: creatorAddr,
                 targetAmount: formatEther(targetAmount),
                 currentAmount: formatEther(currentAmount),
-                status,
-                active: isActive,
+                status: statusValue,
+                active: active,
                 progress,
                 timeLeft: getTimeRemaining(),
             } as Fundraiser;
         } catch (error) {
-            console.error(`Error fetching fundraiser ${id}:`, error);
+            console.error(`Error processing fundraiser ${id}:`, error);
             return null;
         }
     };
